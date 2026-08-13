@@ -1,0 +1,23 @@
+# Dependencies (in case a package manager is ever used)
+node_modules/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+.idea/
+.vscode/
+*.code-workspace
+
+# Logs
+*.log
+npm-debug.log*
+
+# Build / output
+dist/
+build/
+
+# Environment
+.env
+.env.local
