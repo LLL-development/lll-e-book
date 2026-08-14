@@ -27,18 +27,22 @@
     return pdfDoc.getOutline().then(function (outline) {
       function mapItem(item, depth) {
         const pageP = item.dest
-          ? pdfDoc
-              .getDestination(item.dest)
-              .then(function (dest) {
-                if (dest && dest[0] != null) {
-                  return pdfDoc
-                    .getPageIndex(dest[0])
-                    .then(function (idx) { return idx + 1; })
-                    .catch(function () { return null; });
-                }
-                return null;
-              })
-              .catch(function () { return null; })
+          ? (function () {
+              var destP = Array.isArray(item.dest)
+                ? Promise.resolve(item.dest)
+                : pdfDoc.getDestination(item.dest);
+              return destP
+                .then(function (dest) {
+                  if (dest && dest[0] != null) {
+                    return pdfDoc
+                      .getPageIndex(dest[0])
+                      .then(function (idx) { return idx + 1; })
+                      .catch(function () { return null; });
+                  }
+                  return null;
+                })
+                .catch(function () { return null; });
+            })()
           : Promise.resolve(null);
         return pageP.then(function (pageNum) {
           const kids = (item.items || []).map(function (c) {

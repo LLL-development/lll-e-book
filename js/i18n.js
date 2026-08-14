@@ -63,6 +63,9 @@
       'reader.cbz_not_zip': ' The file is not a valid ZIP/CBZ (this can happen if it is actually a RAR or 7-Zip file).',
       'reader.too_big': 'Too large to keep offline — re-upload needed next visit.',
       'reader.too_big_alert': 'This book is over the offline-storage limit and will need to be re-uploaded next visit.',
+      'reader.storage_full_alert': 'This book was opened but not saved for offline use (storage is full). It will need to be re-uploaded next time.',
+      'reader.go_to_page': 'Go to page',
+      'reader.page_slider': 'Progress',
       'format.txt': 'Text',
       'format.html': 'HTML',
       'format.rtf': 'RTF',
@@ -71,6 +74,8 @@
       'format.fb2': 'FB2',
       'format.cbz': 'CBZ',
       'format.cbr': 'CBR',
+      'cbr.file_protocol_error': 'CBR files cannot be opened from file://. RAR archives require a decoding module that browsers block when opening files directly from disk. To open CBR files: serve this folder with a local server (python -m http.server 8000, then open http://localhost:8000), or convert the file to CBZ format (ZIP archive) and upload that instead.',
+      'cbr.decode_error': 'The RAR archive could not be opened. The file may be corrupted or use an unsupported RAR version. Try converting the file to CBZ format (ZIP archive) and upload that instead.',
       'format.unknown': 'File'
     } },
     { ms: {
@@ -114,7 +119,12 @@
       'reader.cbz_not_zip': ' Fail ini bukan ZIP/CBZ yang sah (ini boleh berlaku jika ia sebenarnya fail RAR atau 7-Zip).',
       'reader.too_big': 'Terlalu besar untuk disimpan luar talian — perlu muat naik semula pada lawatan seterusnya.',
       'reader.too_big_alert': 'Buku ini melebihi had simpanan luar talian dan perlu dimuat naik semula pada lawatan seterusnya.',
+      'reader.storage_full_alert': 'Buku ini dibuka tetapi tidak disimpan untuk penggunaan luar talian (storan penuh). Ia perlu dimuat naik semula pada masa akan datang.',
+      'reader.go_to_page': 'Pergi ke halaman',
+      'reader.page_slider': 'Kemajuan',
       'format.txt': 'Teks',
+      'cbr.file_protocol_error': 'Fail CBR tidak boleh dibuka dari file://. Arkib RAR memerlukan modul penyahkodan yang disekat oleh pelayar apabila membuka fail terus dari cakera. Untuk membuka fail CBR: sajikan folder ini dengan pelayan tempatan (python -m http.server 8000, kemudian buka http://localhost:8000), atau tukar fail kepada format CBZ (arkib ZIP) dan muat naik sebaliknya.',
+      'cbr.decode_error': 'Arkib RAR tidak dapat dibuka. Fail mungkin rosak atau menggunakan versi RAR yang tidak disokong. Cuba tukar fail kepada format CBZ (arkib ZIP) dan muat naik sebaliknya.',
       'format.unknown': 'Fail'
     } },
     { ja: {
@@ -158,7 +168,12 @@
       'reader.cbz_not_zip': ' このファイルは有効なZIP/CBZではありません（実際にはRARや7-Zipファイルである可能性があります）。',
       'reader.too_big': 'オフライン保存の上限を超えています — 次回は再アップロードが必要です。',
       'reader.too_big_alert': 'この本はオフライン保存の上限を超えているため、次回は再アップロードが必要です。',
+      'reader.storage_full_alert': 'この本は開けましたが、オフライン保存できませんでした（ストレージがいっぱいです）。次回以降は再アップロードが必要です。',
+      'reader.go_to_page': 'ページへ移動',
+      'reader.page_slider': '進捗',
       'format.txt': 'テキスト',
+      'cbr.file_protocol_error': 'file:// からCBRファイルを開くことはできません。RARアーカイブにはブラウザが直接ファイルを開く際にブロックするデコードモジュールが必要です。CBRファイルを開くには：ローカルサーバーでこのフォルダーを提供してください（python -m http.server 8000、次に http://localhost:8000 を開く）、またはファイルをCBZ形式（ZIPアーカイブ）に変換してアップロードしてください。',
+      'cbr.decode_error': 'RARアーカイブを開けませんでした。ファイルが破損しているか、サポートされていないRARバージョンを使用している可能性があります。ファイルをCBZ形式（ZIPアーカイブ）に変換してアップロードしてみてください。',
       'format.unknown': 'ファイル'
     } },
     { ko: {
@@ -202,7 +217,12 @@
       'reader.cbz_not_zip': ' 이 파일은 유효한 ZIP/CBZ가 아닙니다(실제로 RAR 또는 7-Zip 파일일 수 있습니다).',
       'reader.too_big': '오프라인 저장 한도를 초과했습니다 — 다음 방문 시 다시 업로드해야 합니다.',
       'reader.too_big_alert': '이 책은 오프라인 저장 한도를 초과하여 다음 방문 시 다시 업로드해야 합니다.',
+      'reader.storage_full_alert': '이 책은 열었지만 오프라인으로 저장할 수 없습니다(저장 공간이 가득 찼습니다). 다음에 다시 업로드해야 합니다.',
+      'reader.go_to_page': '페이지로 이동',
+      'reader.page_slider': '진행률',
       'format.txt': '텍스트',
+      'cbr.file_protocol_error': 'file://에서 CBR 파일을 열 수 없습니다. RAR 아카이브에는 브라우저가 디스크에서 직접 파일을 열 때 차단하는 디코딩 모듈이 필요합니다. CBR 파일을 열려면: 로컬 서버로 이 폴더를 제공하세요(python -m http.server 8000, 그런 다음 http://localhost:8000 열기), 또는 파일을 CBZ 형식(ZIP 아카이브)으로 변환하여 업로드하세요.',
+      'cbr.decode_error': 'RAR 아카이브를 열 수 없습니다. 파일이 손상되었거나 지원되지 않는 RAR 버전을 사용하고 있을 수 있습니다. 파일을 CBZ 형식(ZIP 아카이브)으로 변환하여 업로드해 보세요.',
       'format.unknown': '파일'
     } },
     { 'zh-Hans': {
@@ -246,7 +266,12 @@
       'reader.cbz_not_zip': ' 该文件不是有效的ZIP/CBZ（有时它实际上是RAR或7-Zip文件）。',
       'reader.too_big': '超出离线存储上限 — 下次访问需重新上传。',
       'reader.too_big_alert': '此书超出离线存储上限，下次访问时需要重新上传。',
+      'reader.storage_full_alert': '此书已打开，但无法离线保存（存储空间已满）。下次需要重新上传。',
+      'reader.go_to_page': '前往页面',
+      'reader.page_slider': '进度',
       'format.txt': '文本',
+      'cbr.file_protocol_error': '无法从 file:// 打开CBR文件。RAR压缩包需要一个解码模块，浏览器在直接打开磁盘文件时会阻止该模块。要打开CBR文件：请使用本地服务器提供此文件夹（python -m http.server 8000，然后打开 http://localhost:8000），或者将文件转换为CBZ格式（ZIP压缩包）后再上传。',
+      'cbr.decode_error': '无法打开RAR压缩包。文件可能已损坏或使用了不支持的RAR版本。请尝试将文件转换为CBZ格式（ZIP压缩包）后再上传。',
       'format.unknown': '文件'
     } },
     { 'zh-Hant': {
@@ -290,7 +315,12 @@
       'reader.cbz_not_zip': ' 該檔案不是有效的ZIP/CBZ（有時它實際上是RAR或7-Zip檔案）。',
       'reader.too_big': '超出離線儲存上限 — 下次瀏覽需重新上傳。',
       'reader.too_big_alert': '此書超出離線儲存上限，下次瀏覽時需要重新上傳。',
+      'reader.storage_full_alert': '此書已開啟，但無法離線儲存（儲存空間已滿）。下次需要重新上傳。',
+      'reader.go_to_page': '前往頁面',
+      'reader.page_slider': '進度',
       'format.txt': '文字',
+      'cbr.file_protocol_error': '無法從 file:// 開啟CBR檔案。RAR壓縮檔需要一個解碼模組，瀏覽器在直接開啟磁碟檔案時會阻止該模組。要開啟CBR檔案：請使用本地伺服器提供此資料夾（python -m http.server 8000，然後開啟 http://localhost:8000），或者將檔案轉換為CBZ格式（ZIP壓縮檔）後再上傳。',
+      'cbr.decode_error': '無法開啟RAR壓縮檔。檔案可能已損壞或使用了不支援的RAR版本。請嘗試將檔案轉換為CBZ格式（ZIP壓縮檔）後再上傳。',
       'format.unknown': '檔案'
     } }
   );
