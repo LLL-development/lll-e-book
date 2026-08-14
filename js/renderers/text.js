@@ -33,17 +33,227 @@
   }
 
   /**
-   * Very basic RTF -> plain text: strip control words, escapes, and groups.
-   * Good enough to read a document's body text.
+   * RTF -> plain text parser.
+   * Handles control words/symbols, hex escapes, unicode, destination groups,
+   * and nested braces. Strips all formatting, returning only readable text.
    */
   function rtfToText(rtf) {
-    return String(rtf)
-      .replace(/\\par\b/gi, '\n\n')
-      .replace(/\\line\b/gi, '\n')
-      .replace(/\\tab\b/gi, '\t')
-      .replace(/\\([A-Za-z]+)(-?\d+)? ?/g, '')
-      .replace(/\\'[0-9a-fA-F]{2}/g, '')
-      .replace(/[{}]/g, '');
+    var input = String(rtf);
+    var i = 0;
+    var len = input.length;
+    var out = [];
+
+    // State stack for nested groups (fonttbl, colortbl, stylesheets, etc.)
+    var stateStack = [];
+    var skipGroup = false;
+
+    // Control words that produce visible text
+    var textMap = {
+      emdash: '\u2014', endash: '\u2013', bullet: '\u2022',
+      ldblquote: '\u201c', rdblquote: '\u201d',
+      lquote: '\u2018', rquote: '\u2019',
+      ldash: '\u2013', rdash: '\u2013',
+      ellipsis: '\u2026',
+      tab: '\t',
+    };
+
+    // Destination names whose entire group should be skipped
+    var skipDests = {
+      fonttbl: true, colortbl: true, stylesheet: true,
+      info: true, data: true, pict: true,
+      listtemplate: true, list: true, header: true, footer: true,
+    };
+
+    function readWord() {
+      var word = '';
+      while (i < len && /[A-Za-z]/.test(input[i])) {
+        word += input[i];
+        i++;
+      }
+      return word;
+    }
+
+    function readSignedDigit() {
+      var negative = false;
+      if (i < len && input[i] === '-') {
+        negative = true;
+        i++;
+      }
+      var num = '';
+      while (i < len && /\d/.test(input[i])) {
+        num += input[i];
+        i++;
+      }
+      return negative ? -parseInt(num, 10) : (num ? parseInt(num, 10) : 0);
+    }
+
+    function readDigit() {
+      var num = '';
+      while (i < len && /\d/.test(input[i])) {
+        num += input[i];
+        i++;
+      }
+      return num ? parseInt(num, 10) : 0;
+    }
+
+    // Unicode accumulator: \uN? may be followed by ?ANSI
+    var uniAccum = null; // { cp: number, ansi: number|null }
+
+    function flushUni() {
+      if (uniAccum !== null) {
+        var cp = uniAccum.cp;
+        if (cp < 0 || cp > 0x10FFFF) {
+          out.push('\uFFFD'); // replacement char for invalid
+        } else if (uniAccum.ansi !== null) {
+          // ANSI fallback present: use it for out-of-BMP or negative
+          if (cp > 0xFFFF || cp < 0) {
+            out.push(String.fromCharCode(uniAccum.ansi));
+          } else {
+            out.push(String.fromCodePoint(cp));
+          }
+        } else {
+          out.push(String.fromCodePoint(cp));
+        }
+        uniAccum = null;
+      }
+    }
+
+    function parseControl() {
+      // \\'XX hex escape (ANSI code page)
+      if (i < len && input[i] === "'") {
+        i++;
+        var hex = input.substring(i, i + 2);
+        i += 2;
+        flushUni();
+        out.push(String.fromCharCode(parseInt(hex, 16)));
+        return;
+      }
+
+      // \uN? — Unicode with optional ANSI fallback
+      if (i < len && input[i] === 'u') {
+        i++;
+        var cp = readSignedDigit();
+        var ansi = null;
+        if (i < len && input[i] === '?') {
+          i++;
+          ansi = readDigit();
+        }
+        uniAccum = { cp: cp, ansi: ansi };
+        return;
+      }
+
+      // Read control word
+      var word = readWord();
+      if (!word) {
+        // Not a control word — shouldn't happen, skip one char
+        i++;
+        return;
+      }
+
+      // Read optional numeric parameter
+      var param = null;
+      if (i < len && /\d/.test(input[i])) {
+        param = readDigit();
+      }
+
+      var lower = word.toLowerCase();
+
+      // Destination detection: \word{ pattern
+      if (i < len && input[i] === '{') {
+        if (skipDests[lower] || lower === '*') {
+          stateStack.push({ skipGroup: true });
+        }
+        i++; // consume '{'
+        return;
+      }
+
+      // Group open/close
+      if (lower === '{') {
+        stateStack.push({ skipGroup: skipGroup });
+        return;
+      }
+      if (lower === '}') {
+        if (stateStack.length > 0) {
+          var prev = stateStack.pop();
+          skipGroup = prev.skipGroup;
+        }
+        return;
+      }
+
+      // Inside a skip group — consume everything
+      if (skipGroup) {
+        // Consume trailing space after control word
+        if (i < len && input[i] === ' ') { i++; }
+        return;
+      }
+
+      flushUni();
+
+      // Text-producing control words
+      if (lower in textMap) {
+        out.push(textMap[lower]);
+        if (i < len && input[i] === ' ') { i++; }
+        return;
+      }
+
+      // Paragraph / page breaks
+      if (lower === 'par' || lower === 'pard' || lower === 'page') {
+        out.push('\n\n');
+        if (i < len && input[i] === ' ') { i++; }
+        return;
+      }
+      if (lower === 'line') {
+        out.push('\n');
+        if (i < len && input[i] === ' ') { i++; }
+        return;
+      }
+
+      // Formatting switches (b, i, ul, etc.) — skip silently
+      // All other unknown control words — skip silently
+
+      // Consume trailing space
+      if (i < len && input[i] === ' ') { i++; }
+    }
+
+    while (i < len) {
+      var ch = input[i];
+
+      if (ch === '\\') {
+        i++;
+        parseControl();
+      } else if (ch === '{') {
+        // Bare '{' not preceded by \ — push group state
+        stateStack.push({ skipGroup: skipGroup });
+        i++;
+      } else if (ch === '}') {
+        if (stateStack.length > 0) {
+          var prev = stateStack.pop();
+          skipGroup = prev.skipGroup;
+        }
+        i++;
+      } else if (ch === '\r') {
+        if (i + 1 < len && input[i + 1] === '\n') {
+          i += 2; // skip CRLF, treat as newline below
+          out.push('\n');
+        } else {
+          i++; // bare CR — skip
+        }
+      } else if (ch === '\n') {
+        out.push('\n');
+        i++;
+      } else {
+        out.push(ch);
+        i++;
+      }
+    }
+
+    // Flush any remaining unicode buffer
+    flushUni();
+
+    // Post-process: collapse 3+ newlines to 2, strip trailing whitespace
+    var result = out.join('').replace(/\r/g, '').replace(/\n{3,}/g, '\n\n').trim();
+
+    return result;
   }
 
   function renderTxt(text) {

@@ -2,8 +2,9 @@
    LLL-E-Book — renderers/comic.js
    Renders comic archives as full pages of images.
      - CBZ: ZIP archive unpacked in-memory with JSZip (works on file://).
-     - CBR: RAR archive via unrar-wasm IF it is available. Browsers block the
-       WASM fetch on file://, so on failure we show a helpful notice.
+     - CBR: RAR archive via node-unrar-js (ESM + WASM). Requires HTTP(S)
+       protocol to fetch the WASM binary; on file:// or fetch failure we
+       show a helpful notice.
    ========================================================================== */
 (function () {
   'use strict';
@@ -13,15 +14,25 @@
   /**
    * Build a page-based session over a list of page loader functions.
    */
-  function imageSession(loaders, name) {
+  function imageSession(loaders, name, entries) {
     let idx = 0;
+    let currentUrl = null;
+    let currentLoad = 0;
     const img = document.createElement('img');
     const root = document.createElement('div');
     root.appendChild(img);
 
     function load(i) {
+      idx = i;
+      const token = ++currentLoad;
       return loaders[i]().then(function (url) {
-        img.src = url;
+        if (token === currentLoad) {
+          if (currentUrl) URL.revokeObjectURL(currentUrl);
+          currentUrl = url;
+          img.src = url;
+        } else {
+          URL.revokeObjectURL(url);
+        }
       });
     }
 
@@ -29,6 +40,7 @@
       title: name,
       format: 'comic',
       numPages: loaders.length,
+      load: load,
       next: function () {
         if (idx < loaders.length - 1) {
           idx += 1;
@@ -45,16 +57,32 @@
       },
       goTo: function (loc) {
         if (loc && typeof loc.page === 'number') {
-          idx = Math.max(0, Math.min(loaders.length - 1, loc.page));
+          idx = Math.max(0, Math.min(loaders.length - 1, loc.page - 1));
           return load(idx);
         }
         return Promise.resolve();
       },
       getLocation: function () {
-        return { type: 'page', page: idx, numPages: loaders.length };
+        return { type: 'page', page: idx + 1, numPages: loaders.length };
       },
       destroy: function () {
+        if (currentUrl) URL.revokeObjectURL(currentUrl);
+        currentUrl = null;
         root.remove();
+      },
+      getToc: function () {
+        return entries.map(function (entryName, idx) {
+          var label = entryName.replace(/\.[^/.]+$/, '');
+          var pageMatch = label.match(/(\d+)/);
+          if (pageMatch) {
+            label = 'Page ' + parseInt(pageMatch[1], 10);
+          }
+          return {
+            label: label,
+            target: { page: idx + 1 },
+            depth: 0
+          };
+        });
       },
     };
     return { session: session, root: root };
@@ -79,7 +107,9 @@
           .filter(function (n) {
             return !zip.files[n].dir && IMAGE_RE.test(n);
           })
-          .sort();
+          .sort(function (a, b) {
+            return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+          });
         if (!entries.length) throw new Error('no-images');
 
         const loaders = entries.map(function (entryName) {
@@ -87,7 +117,7 @@
             return zip.file(entryName).async('blob').then(URL.createObjectURL);
           };
         });
-        const built = imageSession(loaders, name);
+        const built = imageSession(loaders, name, entries);
         built.session.format = 'cbz';
         container.innerHTML = '';
         container.appendChild(built.root);
@@ -98,28 +128,46 @@
   }
 
   function renderCbr(buf, container, name) {
-    if (typeof window.createUnrar !== 'function') {
+    var isFileProtocol = window.location.protocol === 'file:';
+    if (isFileProtocol) {
       return Promise.resolve(showCbrNotice(container));
     }
-    return window
-      .createUnrar()
-      .then(function (unrar) {
-        return unrar.extract({ data: buf, files: [] });
+    return loadUnrar()
+      .then(function (createExtractor) {
+        return createExtractor(buf);
       })
-      .then(function (result) {
-        const images = result.files.filter(function (f) {
-          return IMAGE_RE.test(f.name);
+      .then(function (extractor) {
+        var imageNames = [];
+        var list = extractor.getFileList();
+        var headers = list.fileHeaders;
+        for (var h = headers.next(); !h.done; h = headers.next()) {
+          var fh = h.value;
+          if (!fh.flags.directory && IMAGE_RE.test(fh.name)) {
+            imageNames.push(fh.name);
+          }
+        }
+        imageNames.sort(function (a, b) {
+          return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
         });
-        if (!images.length) throw new Error('no-images');
-
-        const loaders = images.map(function (file) {
+        if (!imageNames.length) throw new Error('no-images');
+        var extracted = extractor.extract({
+          files: function (fh) {
+            return imageNames.indexOf(fh.name) !== -1;
+          }
+        });
+        var images = [];
+        var filesIter = extracted.files;
+        for (var f = filesIter.next(); !f.done; f = filesIter.next()) {
+          images.push(f.value);
+        }
+        var loaders = images.map(function (file) {
           return function () {
             return Promise.resolve(
               URL.createObjectURL(new Blob([file.extraction]))
             );
           };
         });
-        const built = imageSession(loaders, name);
+        var built = imageSession(loaders, name, imageNames);
         built.session.format = 'cbr';
         container.innerHTML = '';
         container.appendChild(built.root);
@@ -127,22 +175,54 @@
           return built.session;
         });
       })
-      .catch(function () {
+      .catch(function (err) {
+        if (err && err.message === 'no-images') throw err;
         return showCbrNotice(container);
       });
   }
 
+  var _unrarPromise = null;
+  function loadUnrar() {
+    if (_unrarPromise) return _unrarPromise;
+    _unrarPromise = (function () {
+      var wasmUrl = 'https://cdn.jsdelivr.net/npm/node-unrar-js@2.0.2/esm/js/unrar.wasm';
+      return fetch(wasmUrl)
+        .then(function (res) {
+          if (!res.ok) throw new Error('wasm-fetch-failed');
+          return res.arrayBuffer();
+        })
+        .then(function (wasmBinary) {
+          return import('https://cdn.jsdelivr.net/npm/node-unrar-js@2.0.2/esm/index.esm.js')
+            .then(function (mod) {
+              var createExtractorFromData = mod.createExtractorFromData;
+              if (!createExtractorFromData) {
+                throw new Error('unrar-api-missing');
+              }
+              return function (data) {
+                return createExtractorFromData({ wasmBinary: wasmBinary, data: data });
+              };
+            });
+        })
+        .catch(function () {
+          _unrarPromise = null;
+          throw new Error('unrar-init-failed');
+        });
+    })();
+    return _unrarPromise;
+  }
+
   function showCbrNotice(container) {
-    container.innerHTML =
-      '<div class="notice"><p><strong>CBR note:</strong> RAR files need the browser to ' +
-      'load a decoding module, which is blocked when the page is opened directly from disk ' +
-      '(<code>file://</code>).</p><p>Options:</p><ul>' +
-      '<li>Serve this folder with a local server: <code>python -m http.server 8000</code>, then open <code>http://localhost:8000</code>.</li>' +
-      '<li>Convert the file to <strong>CBZ</strong> (ZIP) and upload that instead.</li>' +
-      '</ul></div>';
+    var isFileProtocol = window.location.protocol === 'file:';
+    var message = isFileProtocol
+      ? window.LLLBook.I18n.t('cbr.file_protocol_error')
+      : window.LLLBook.I18n.t('cbr.decode_error');
+
+    container.innerHTML = '<div class="notice"><p>' + message + '</p></div>';
+
     const session = {
       title: '',
       format: 'cbr',
+      load: function () { return Promise.resolve(); },
       next: function () { return Promise.resolve(); },
       prev: function () { return Promise.resolve(); },
       goTo: function () { return Promise.resolve(); },

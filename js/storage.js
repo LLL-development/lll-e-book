@@ -47,6 +47,14 @@
     getBook(id) {
       return this.getBooks()[id] || null;
     },
+    setBooks(books) {
+      localStorage.setItem(BOOKS_KEY, JSON.stringify(books));
+    },
+    setBook(id, book) {
+      const books = this.getBooks();
+      books[id] = Object.assign({}, books[id], book);
+      write(BOOKS_KEY, books);
+    },
 
     /* ---- reading progress ---- */
     saveProgress(id, progress) {

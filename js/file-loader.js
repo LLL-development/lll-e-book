@@ -15,7 +15,7 @@
     rtf: { key: 'rtf', renderer: 'text' },
     pdf: { key: 'pdf', renderer: 'pdf' },
     epub: { key: 'epub', renderer: 'epub' },
-    fb2: { key: 'fb2', renderer: 'epub' },
+    fb2: { key: 'fb2', renderer: 'fb2' },
     cbz: { key: 'cbz', renderer: 'comic' },
     cbr: { key: 'cbr', renderer: 'comic' },
   };

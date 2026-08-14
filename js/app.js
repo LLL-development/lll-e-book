@@ -11,6 +11,7 @@
 
   let currentSession = null;
   let currentBookId = null;
+  let currentPageJump = null; // { type: 'page' | 'slider', total: number }
 
   function bookIdFor(file) {
     return file.name + '|' + (file.size || 0) + '|' + (file.lastModified || 0);
@@ -207,6 +208,115 @@
     }
   }
 
+  function renderPageJump(session) {
+    const container = $('#page-jump');
+    const input = $('#page-input');
+    const totalSpan = $('#page-total');
+    const slider = $('#page-slider');
+    if (!container || !input || !totalSpan || !slider) return;
+
+    // Attach listeners once (shared across all formats)
+    if (!input._pageJumpWired) {
+      input._pageJumpWired = true;
+      input.setAttribute('aria-label', window.LLLBook.I18n.t('reader.go_to_page'));
+      input.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); goToPage(input, slider); }
+      });
+      input.addEventListener('change', function () { goToPage(input, slider); });
+    }
+    if (!slider._pageJumpWired) {
+      slider._pageJumpWired = true;
+      slider.setAttribute('aria-label', window.LLLBook.I18n.t('reader.page_slider'));
+      slider.addEventListener('input', function () {
+        if (!currentSession) return;
+        if (currentPageJump && currentPageJump.type !== 'slider') return;
+        const v = parseInt(slider.value, 10);
+        if (isNaN(v)) return;
+        currentSession.goTo({ ratio: v / 100 }).then(function () {
+          saveProgress(); updateProgressLabel(); updateBookmarkButton();
+        }).catch(function () {});
+      });
+    }
+
+    if (!session) {
+      container.style.display = 'none';
+      return;
+    }
+
+    // Page-based formats (PDF, Comic)
+    if (typeof session.numPages === 'number' && session.numPages > 0) {
+      container.style.display = 'flex';
+      input.style.display = 'inline-block';
+      slider.style.display = 'none';
+      totalSpan.textContent = session.numPages;
+      input.min = 1;
+      input.max = session.numPages;
+      const loc = session.getLocation();
+      const pageNum = loc && typeof loc.page === 'number' ? loc.page : 1;
+      input.value = pageNum;
+      currentPageJump = { type: 'page', total: session.numPages };
+      return;
+    }
+
+    // Scroll-based formats (Text, FB2) and EPUB
+    container.style.display = 'flex';
+    input.style.display = 'none';
+    slider.style.display = 'inline-block';
+    totalSpan.textContent = '';
+    slider.min = 0;
+    slider.max = 100;
+    currentPageJump = { type: 'slider' };
+
+    updateSliderFromSession();
+
+    const bookContainer = $('#book-container');
+    if (bookContainer && !bookContainer._pageJumpScrollAttached) {
+      bookContainer._pageJumpScrollAttached = true;
+      bookContainer._pageJumpScrollHandler = function () {
+        if (currentPageJump && currentPageJump.type === 'slider') {
+          updateSliderFromSession();
+        }
+      };
+      bookContainer.addEventListener('scroll', bookContainer._pageJumpScrollHandler);
+    }
+  }
+
+  function updateSliderFromSession() {
+    const slider = $('#page-slider');
+    if (!slider || !currentSession) return;
+    const loc = currentSession.getLocation();
+    if (loc && typeof loc.ratio === 'number') {
+      slider.value = Math.round(loc.ratio * 100);
+    } else if (loc && typeof loc.percentage === 'number') {
+      slider.value = Math.round(loc.percentage * 100);
+    }
+  }
+
+  function goToPage(input, slider) {
+    if (!currentSession) return;
+    const val = parseInt(input.value, 10);
+    if (isNaN(val)) return;
+    const loc = currentSession.getLocation();
+    if (loc && typeof loc.page === 'number') {
+      const max = (typeof currentSession.numPages === 'number') ? currentSession.numPages : val;
+      const page = Math.max(1, Math.min(max, val));
+      currentSession.goTo({ page: page }).then(function () {
+        saveProgress();
+        updateProgressLabel();
+        updateBookmarkButton();
+        input.value = page;
+      }).catch(function () {
+        const loc2 = currentSession.getLocation();
+        input.value = loc2 && typeof loc2.page === 'number' ? loc2.page : '';
+      });
+    } else if (slider) {
+      const ratio = parseInt(slider.value, 10) / 100;
+      currentSession.goTo({ ratio: ratio }).then(function () {
+        saveProgress(); updateProgressLabel(); updateBookmarkButton();
+      }).catch(function () {});
+    }
+  }
+
   function step(dir) {
     if (!currentSession) return;
     const fn = dir < 0 ? currentSession.prev : currentSession.next;
@@ -221,6 +331,7 @@
       saveProgress();
       updateProgressLabel();
       updateBookmarkButton();
+      renderPageJump(currentSession);
     });
   }
 
@@ -434,8 +545,15 @@
     if (currentSession && typeof currentSession.destroy === 'function') {
       currentSession.destroy();
     }
+    const bookContainer = $('#book-container');
+    if (bookContainer && bookContainer._pageJumpScrollHandler) {
+      bookContainer.removeEventListener('scroll', bookContainer._pageJumpScrollHandler);
+      bookContainer._pageJumpScrollHandler = null;
+      bookContainer._pageJumpScrollAttached = false;
+    }
     currentSession = null;
     currentBookId = null;
+    currentPageJump = null;
     $('#toc-panel').classList.remove('open');
     showLibrary();
     renderLibrary();
@@ -474,8 +592,13 @@
           renderLibrary();
         }
       })
-      .catch(function () {
-        /* storage unavailable or full — book simply won't persist */
+      .catch(function (err) {
+        /* storage unavailable or full — book won't persist */
+        if (err && (err.name === 'QuotaExceededError' || err.code === 22 || err.code === 1014)) {
+          showToast(window.LLLBook.I18n.t('reader.storage_full_alert'));
+        } else {
+          console.warn('tryStore failed:', err);
+        }
       });
   }
 
@@ -501,6 +624,7 @@
         updateBookmarkButton();
         renderBookmarks();
         renderToc(currentSession);
+        renderPageJump(currentSession);
         renderLibrary();
       })
       .catch(function (err) {
@@ -581,6 +705,15 @@
     if ($('#reader-view').classList.contains('hidden')) return;
     const tag = (document.activeElement && document.activeElement.tagName) || '';
     if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    if (e.key === 'g' || e.key === 'G') {
+      e.preventDefault();
+      const input = $('#page-input');
+      if (input && input.style.display !== 'none') {
+        input.focus();
+        input.select();
+      }
+      return;
+    }
     if (e.key === 'ArrowRight') step(1);
     else if (e.key === 'ArrowLeft') step(-1);
   }
@@ -624,6 +757,14 @@
     $('#bookmark-btn').addEventListener('click', toggleBookmark);
     $('#toc-toggle').addEventListener('click', toggleToc);
     document.addEventListener('keydown', onKeydown);
+
+    // EPUB relocated event for slider updates
+    document.addEventListener('epub-relocated', function () {
+      if (currentPageJump && currentPageJump.type === 'slider') {
+        updateSliderFromSession();
+        updateProgressLabel();
+      }
+    });
   }
 
   if (document.readyState === 'loading') {

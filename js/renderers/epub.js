@@ -47,9 +47,14 @@
             reject(new Error('epub-parse'));
             return;
           }
-          rendition.display().then(
-            function () {
-              const session = {
+              rendition.display().then(
+                function () {
+                  rendition.on('relocated', function (location) {
+                    document.dispatchEvent(new CustomEvent('epub-relocated', {
+                      detail: { location: location }
+                    }));
+                  });
+                  const session = {
                 title: file.name,
                 format: 'epub',
                 next: function () {
@@ -70,7 +75,11 @@
                 getLocation: function () {
                   const loc = rendition.currentLocation();
                   const cfi = loc && loc.start ? loc.start.cfi : null;
-                  return { type: 'cfi', cfi: cfi };
+                  const result = { type: 'cfi', cfi: cfi };
+                  if (loc && loc.start && loc.start.percentage != null) {
+                    result.percentage = loc.start.percentage;
+                  }
+                  return result;
                 },
                 setFontSize: function (px) {
                   if (
