@@ -73,9 +73,6 @@
       'format.epub': 'EPUB',
       'format.fb2': 'FB2',
       'format.cbz': 'CBZ',
-      'format.cbr': 'CBR',
-      'cbr.file_protocol_error': 'CBR files cannot be opened from file://. RAR archives require a decoding module that browsers block when opening files directly from disk. To open CBR files: serve this folder with a local server (python -m http.server 8000, then open http://localhost:8000), or convert the file to CBZ format (ZIP archive) and upload that instead.',
-      'cbr.decode_error': 'The RAR archive could not be opened. The file may be corrupted or use an unsupported RAR version. Try converting the file to CBZ format (ZIP archive) and upload that instead.',
       'format.unknown': 'File'
     } },
     { ms: {
@@ -123,8 +120,6 @@
       'reader.go_to_page': 'Pergi ke halaman',
       'reader.page_slider': 'Kemajuan',
       'format.txt': 'Teks',
-      'cbr.file_protocol_error': 'Fail CBR tidak boleh dibuka dari file://. Arkib RAR memerlukan modul penyahkodan yang disekat oleh pelayar apabila membuka fail terus dari cakera. Untuk membuka fail CBR: sajikan folder ini dengan pelayan tempatan (python -m http.server 8000, kemudian buka http://localhost:8000), atau tukar fail kepada format CBZ (arkib ZIP) dan muat naik sebaliknya.',
-      'cbr.decode_error': 'Arkib RAR tidak dapat dibuka. Fail mungkin rosak atau menggunakan versi RAR yang tidak disokong. Cuba tukar fail kepada format CBZ (arkib ZIP) dan muat naik sebaliknya.',
       'format.unknown': 'Fail'
     } },
     { ja: {
@@ -172,8 +167,6 @@
       'reader.go_to_page': 'ページへ移動',
       'reader.page_slider': '進捗',
       'format.txt': 'テキスト',
-      'cbr.file_protocol_error': 'file:// からCBRファイルを開くことはできません。RARアーカイブにはブラウザが直接ファイルを開く際にブロックするデコードモジュールが必要です。CBRファイルを開くには：ローカルサーバーでこのフォルダーを提供してください（python -m http.server 8000、次に http://localhost:8000 を開く）、またはファイルをCBZ形式（ZIPアーカイブ）に変換してアップロードしてください。',
-      'cbr.decode_error': 'RARアーカイブを開けませんでした。ファイルが破損しているか、サポートされていないRARバージョンを使用している可能性があります。ファイルをCBZ形式（ZIPアーカイブ）に変換してアップロードしてみてください。',
       'format.unknown': 'ファイル'
     } },
     { ko: {
@@ -221,8 +214,6 @@
       'reader.go_to_page': '페이지로 이동',
       'reader.page_slider': '진행률',
       'format.txt': '텍스트',
-      'cbr.file_protocol_error': 'file://에서 CBR 파일을 열 수 없습니다. RAR 아카이브에는 브라우저가 디스크에서 직접 파일을 열 때 차단하는 디코딩 모듈이 필요합니다. CBR 파일을 열려면: 로컬 서버로 이 폴더를 제공하세요(python -m http.server 8000, 그런 다음 http://localhost:8000 열기), 또는 파일을 CBZ 형식(ZIP 아카이브)으로 변환하여 업로드하세요.',
-      'cbr.decode_error': 'RAR 아카이브를 열 수 없습니다. 파일이 손상되었거나 지원되지 않는 RAR 버전을 사용하고 있을 수 있습니다. 파일을 CBZ 형식(ZIP 아카이브)으로 변환하여 업로드해 보세요.',
       'format.unknown': '파일'
     } },
     { 'zh-Hans': {
@@ -270,8 +261,6 @@
       'reader.go_to_page': '前往页面',
       'reader.page_slider': '进度',
       'format.txt': '文本',
-      'cbr.file_protocol_error': '无法从 file:// 打开CBR文件。RAR压缩包需要一个解码模块，浏览器在直接打开磁盘文件时会阻止该模块。要打开CBR文件：请使用本地服务器提供此文件夹（python -m http.server 8000，然后打开 http://localhost:8000），或者将文件转换为CBZ格式（ZIP压缩包）后再上传。',
-      'cbr.decode_error': '无法打开RAR压缩包。文件可能已损坏或使用了不支持的RAR版本。请尝试将文件转换为CBZ格式（ZIP压缩包）后再上传。',
       'format.unknown': '文件'
     } },
     { 'zh-Hant': {
@@ -319,8 +308,6 @@
       'reader.go_to_page': '前往頁面',
       'reader.page_slider': '進度',
       'format.txt': '文字',
-      'cbr.file_protocol_error': '無法從 file:// 開啟CBR檔案。RAR壓縮檔需要一個解碼模組，瀏覽器在直接開啟磁碟檔案時會阻止該模組。要開啟CBR檔案：請使用本地伺服器提供此資料夾（python -m http.server 8000，然後開啟 http://localhost:8000），或者將檔案轉換為CBZ格式（ZIP壓縮檔）後再上傳。',
-      'cbr.decode_error': '無法開啟RAR壓縮檔。檔案可能已損壞或使用了不支援的RAR版本。請嘗試將檔案轉換為CBZ格式（ZIP壓縮檔）後再上傳。',
       'format.unknown': '檔案'
     } }
   );

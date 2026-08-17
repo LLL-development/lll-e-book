@@ -17,7 +17,6 @@
     epub: { key: 'epub', renderer: 'epub' },
     fb2: { key: 'fb2', renderer: 'fb2' },
     cbz: { key: 'cbz', renderer: 'comic' },
-    cbr: { key: 'cbr', renderer: 'comic' },
   };
 
   function getExtension(name) {

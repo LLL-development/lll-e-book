@@ -380,27 +380,31 @@
 
           container.innerHTML = '<div class="fb2-content">' + html + '</div>';
 
-          function scrollable() {
-            return container;
-          }
           function ratio() {
-            var max = scrollable().scrollHeight - scrollable().clientHeight;
-            return max > 0 ? scrollable().scrollTop / max : 0;
+            var viewH = window.innerHeight;
+            var docH = document.documentElement.scrollHeight;
+            var maxDocScroll = docH - viewH;
+            if (maxDocScroll <= 0) return 0;
+            return Math.max(0, Math.min(1, window.scrollY / maxDocScroll));
           }
           function setRatio(r) {
-            var max = scrollable().scrollHeight - scrollable().clientHeight;
-            scrollable().scrollTop = Math.max(0, Math.min(1, r)) * max;
+            r = Math.max(0, Math.min(1, r));
+            var viewH = window.innerHeight;
+            var docH = document.documentElement.scrollHeight;
+            var maxDocScroll = docH - viewH;
+            if (maxDocScroll <= 0) return;
+            window.scrollTo({ top: r * maxDocScroll, behavior: 'auto' });
           }
 
           var session = {
             title: file.name,
             format: 'fb2',
             next: function () {
-              scrollable().scrollBy({ top: scrollable().clientHeight * 0.9, behavior: 'smooth' });
+              window.scrollBy({ top: window.innerHeight * 0.9, behavior: 'smooth' });
               return Promise.resolve();
             },
             prev: function () {
-              scrollable().scrollBy({ top: -scrollable().clientHeight * 0.9, behavior: 'smooth' });
+              window.scrollBy({ top: -window.innerHeight * 0.9, behavior: 'smooth' });
               return Promise.resolve();
             },
             goTo: function (loc) {

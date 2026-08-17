@@ -43,18 +43,26 @@
 
   /* ---------------- Views ---------------- */
 
-  function showReader(title) {
+  function showReader(title, fmt) {
     $('#book-title').textContent = title;
     $('#library-view').classList.add('hidden');
     const rv = $('#reader-view');
     rv.classList.remove('hidden');
+    const isPaged = fmt && (fmt.key === 'pdf' || fmt.key === 'cbz');
+    rv.classList.toggle('reader-paged', isPaged);
+    const isPagedFormat = fmt && (fmt.key === 'pdf' || fmt.key === 'cbz');
+    document.getElementById('pdf-zoom-group').style.display = isPagedFormat ? 'flex' : 'none';
+    document.getElementById('zoom-slider-group').style.display = isPagedFormat ? 'flex' : 'none';
     rv.classList.remove('reader-entered');
     void rv.offsetWidth; // restart the animation
     rv.classList.add('reader-entered');
   }
 
   function showLibrary() {
-    $('#reader-view').classList.add('hidden');
+    const rv = $('#reader-view');
+    rv.classList.add('hidden');
+    rv.classList.remove('reader-paged');
+    $('#pdf-zoom-group').style.display = 'none';
     $('#library-view').classList.remove('hidden');
   }
 
@@ -258,7 +266,7 @@
       return;
     }
 
-    // Scroll-based formats (Text, FB2) and EPUB
+    // Scroll-based formats (Text, FB2)
     container.style.display = 'flex';
     input.style.display = 'none';
     slider.style.display = 'inline-block';
@@ -269,15 +277,18 @@
 
     updateSliderFromSession();
 
-    const bookContainer = $('#book-container');
-    if (bookContainer && !bookContainer._pageJumpScrollAttached) {
-      bookContainer._pageJumpScrollAttached = true;
-      bookContainer._pageJumpScrollHandler = function () {
+    if (!window._pageJumpScrollAttached) {
+      window._pageJumpScrollAttached = true;
+      window._pageJumpScrollHandler = function () {
         if (currentPageJump && currentPageJump.type === 'slider') {
           updateSliderFromSession();
+          updateProgressLabel();
+          updateBookmarkButton();
+          clearTimeout(window._saveProgressTimer);
+          window._saveProgressTimer = setTimeout(saveProgress, 500);
         }
       };
-      bookContainer.addEventListener('scroll', bookContainer._pageJumpScrollHandler);
+      window.addEventListener('scroll', window._pageJumpScrollHandler);
     }
   }
 
@@ -335,13 +346,48 @@
     });
   }
 
+  function updateZoomButtons() {
+    if (!currentSession) return;
+    const mode = currentSession.zoomMode;
+    const fitPage = $('#zoom-fit-page');
+    const fitWidth = $('#zoom-fit-width');
+    const zoom100 = $('#zoom-100');
+    if (fitPage) fitPage.classList.toggle('is-active', mode === 'fit-page');
+    if (fitWidth) fitWidth.classList.toggle('is-active', mode === 'fit-width');
+    if (zoom100) zoom100.classList.toggle('is-active', mode === 'original');
+  }
+
   /* ---------------- Toolbar actions ---------------- */
 
   function adjustFont(delta) {
-    const current = window.LLLBook.Storage.getFontSize() || 18;
-    const next = Math.max(12, Math.min(32, current + delta * 2));
-    window.LLLBook.Storage.setFontSize(next);
-    applySavedFontSize();
+    if (currentSession && typeof currentSession.zoomIn === 'function') {
+      if (delta > 0) {
+        currentSession.zoomIn();
+      } else if (delta < 0) {
+        currentSession.zoomOut();
+      }
+      updateZoomUI();
+    } else if (currentSession && typeof currentSession.setFontSize === 'function') {
+      const current = currentSession.getFontSize ? currentSession.getFontSize() : 16;
+      const newSize = Math.max(8, Math.min(32, current + (delta > 0 ? 2 : -2)));
+      currentSession.setFontSize(newSize);
+    }
+  }
+
+  function updateZoomUI() {
+    const slider = document.getElementById('zoom-slider');
+    const percent = document.getElementById('zoom-percentage');
+    const format = currentSession ? currentSession.format : '';
+
+    if (format === 'pdf' || format === 'cbz') {
+      const level = currentSession.zoomLevel || 1.0;
+      const percentValue = Math.round(level * 100);
+      if (slider) slider.value = percentValue;
+      if (percent) percent.textContent = percentValue + '%';
+      document.getElementById('zoom-slider-group').style.display = 'flex';
+    } else {
+      document.getElementById('zoom-slider-group').style.display = 'none';
+    }
   }
 
   function applySavedFontSize() {
@@ -545,18 +591,21 @@
     if (currentSession && typeof currentSession.destroy === 'function') {
       currentSession.destroy();
     }
-    const bookContainer = $('#book-container');
-    if (bookContainer && bookContainer._pageJumpScrollHandler) {
-      bookContainer.removeEventListener('scroll', bookContainer._pageJumpScrollHandler);
-      bookContainer._pageJumpScrollHandler = null;
-      bookContainer._pageJumpScrollAttached = false;
+    if (window._pageJumpScrollHandler) {
+      window.removeEventListener('scroll', window._pageJumpScrollHandler);
+      window._pageJumpScrollHandler = null;
+      window._pageJumpScrollAttached = false;
+      clearTimeout(window._saveProgressTimer);
+      window._saveProgressTimer = null;
     }
     currentSession = null;
     currentBookId = null;
     currentPageJump = null;
+    document.getElementById('zoom-slider-group').style.display = 'none';
     $('#toc-panel').classList.remove('open');
     showLibrary();
     renderLibrary();
+    updateButtonLabels();
   }
 
   /* ---------------- Open / upload ---------------- */
@@ -603,7 +652,12 @@
   }
 
   function renderFromFile(file, id) {
-    showReader(file.name);
+    if (currentSession && typeof currentSession.destroy === 'function') {
+    currentSession.destroy();
+    currentSession = null;
+    }
+    const fmt = window.LLLBook.FileLoader.detectFormat(file);
+    showReader(file.name, fmt);
     const container = $('#book-container');
     container.innerHTML =
       '<div class="loading">' + window.LLLBook.I18n.t('reader.loading') + '</div>';
@@ -626,6 +680,16 @@
         renderToc(currentSession);
         renderPageJump(currentSession);
         renderLibrary();
+        // Show zoom controls only for PDF
+        const zoomGroup = $('#pdf-zoom-group');
+        if (currentSession && currentSession.format === 'pdf') {
+          zoomGroup.style.display = 'flex';
+          updateZoomButtons();
+        } else {
+          zoomGroup.style.display = 'none';
+        }
+        updateZoomUI();
+        updateButtonLabels();
       })
       .catch(function (err) {
         const msg = err && err.message;
@@ -714,7 +778,17 @@
       }
       return;
     }
-    if (e.key === 'ArrowRight') step(1);
+    if (e.key === '=' || e.key === '+') {
+      if (currentSession && typeof currentSession.zoomIn === 'function') {
+        currentSession.zoomIn();
+        updateZoomUI();
+      }
+    } else if (e.key === '-' || e.key === '_') {
+      if (currentSession && typeof currentSession.zoomOut === 'function') {
+        currentSession.zoomOut();
+        updateZoomUI();
+      }
+    } else if (e.key === 'ArrowRight') step(1);
     else if (e.key === 'ArrowLeft') step(-1);
   }
 
@@ -726,6 +800,23 @@
       'data-theme',
       theme === 'dark' ? 'dark' : 'light'
     );
+  }
+
+  function updateButtonLabels() {
+    const format = currentSession ? currentSession.format : '';
+    const isZoom = (format === 'pdf' || format === 'cbz');
+
+    const minusBtn = $('#font-minus');
+    const plusBtn = $('#font-plus');
+
+    if (minusBtn) {
+      minusBtn.title = isZoom ? 'Zoom out' : 'Decrease font size';
+      minusBtn.setAttribute('aria-label', isZoom ? 'Zoom out' : 'Decrease font size');
+    }
+    if (plusBtn) {
+      plusBtn.title = isZoom ? 'Zoom in' : 'Increase font size';
+      plusBtn.setAttribute('aria-label', isZoom ? 'Zoom in' : 'Increase font size');
+    }
   }
 
   function init() {
@@ -756,14 +847,54 @@
     $('#theme-toggle').addEventListener('click', toggleTheme);
     $('#bookmark-btn').addEventListener('click', toggleBookmark);
     $('#toc-toggle').addEventListener('click', toggleToc);
+    $('#zoom-fit-page').addEventListener('click', function () {
+      if (currentSession && typeof currentSession.setZoomMode === 'function') {
+        currentSession.setZoomMode('fit-page').then(updateZoomButtons);
+      }
+    });
+    $('#zoom-fit-width').addEventListener('click', function () {
+      if (currentSession && typeof currentSession.setZoomMode === 'function') {
+        currentSession.setZoomMode('fit-width').then(updateZoomButtons);
+      }
+    });
+    $('#zoom-100').addEventListener('click', function () {
+      if (currentSession && typeof currentSession.setZoomMode === 'function') {
+        currentSession.setZoomMode('original').then(updateZoomButtons);
+      }
+    });
+    const zoomSlider = document.getElementById('zoom-slider');
+    if (zoomSlider) {
+      zoomSlider.addEventListener('input', function(e) {
+        if (currentSession && typeof currentSession.setZoomLevel === 'function') {
+          const level = parseInt(e.target.value) / 100;
+          currentSession.setZoomLevel(level);
+          document.getElementById('zoom-percentage').textContent = e.target.value + '%';
+        }
+      });
+    }
     document.addEventListener('keydown', onKeydown);
 
-    // EPUB relocated event for slider updates
+    // EPUB relocated event for page/slider updates
     document.addEventListener('epub-relocated', function () {
+      if (!currentSession) return;
+
+      const loc = currentSession.getLocation();
+
+      // Update page input for page-based formats (PDF, CBZ, EPUB)
+      if (currentPageJump && currentPageJump.type === 'page' && loc && typeof loc.page === 'number') {
+        const input = $('#page-input');
+        if (input) {
+          input.value = loc.page;
+        }
+      }
+
+      // Update slider for scroll-based formats (Text, FB2)
       if (currentPageJump && currentPageJump.type === 'slider') {
         updateSliderFromSession();
-        updateProgressLabel();
       }
+
+      // Always update progress label
+      updateProgressLabel();
     });
   }
 

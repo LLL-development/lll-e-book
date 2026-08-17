@@ -8,7 +8,6 @@
 
   const WORKER_SRC =
     'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-  const RENDER_SCALE = 1.5;
   let workerConfigured = false;
 
   function ensurePdfJs() {
@@ -87,26 +86,61 @@
           const task = window.pdfjsLib.getDocument({ data: reader.result });
           task.promise.then(function (pdfDoc) {
             container.innerHTML = '';
+            const wrapper = document.createElement('div');
+            wrapper.className = 'pdf-page';
             const canvas = document.createElement('canvas');
-            container.appendChild(canvas);
+            wrapper.appendChild(canvas);
+            container.appendChild(wrapper);
             const ctx = canvas.getContext('2d');
             let pageNum = 1;
+            let zoomMode = 'fit-page';
+            let zoomLevel = 1.0;
             let tocPromise = null;
+            let resizeTimer = null;
+
+            function calcScale(page) {
+              const naturalVp = page.getViewport({ scale: 1.0 });
+              const cw = wrapper.clientWidth || (container.clientWidth - 16);
+              const ch = wrapper.clientHeight || (container.clientHeight - 16);
+              if (cw <= 0 || ch <= 0) return 1.5;
+              if (zoomMode === 'fit-page') {
+                return Math.min(cw / naturalVp.width, ch / naturalVp.height);
+              } else if (zoomMode === 'fit-width') {
+                return cw / naturalVp.width;
+              } else if (zoomMode === 'original') {
+                return 1.0;
+              } else {
+                return zoomLevel;
+              }
+            }
 
             function renderPage(num) {
               return pdfDoc.getPage(num).then(function (page) {
-                const viewport = page.getViewport({ scale: RENDER_SCALE });
+                const scale = calcScale(page);
+                const viewport = page.getViewport({ scale: scale });
                 canvas.width = viewport.width;
                 canvas.height = viewport.height;
                 return page.render({ canvasContext: ctx, viewport: viewport }).promise;
               });
             }
 
+            function onResize() {
+              if (zoomMode === 'manual') return;
+              clearTimeout(resizeTimer);
+              resizeTimer = setTimeout(function () {
+                renderPage(pageNum);
+              }, 200);
+            }
+
+            window.addEventListener('resize', onResize);
+
             renderPage(1).then(function () {
               const session = {
                 title: file.name,
                 format: 'pdf',
                 numPages: pdfDoc.numPages,
+                zoomMode: zoomMode,
+                zoomLevel: zoomLevel,
                 next: function () {
                   if (pageNum < pdfDoc.numPages) {
                     pageNum += 1;
@@ -137,7 +171,39 @@
                   }
                   return tocPromise;
                 },
+                setZoomMode: function (mode) {
+                  zoomMode = mode;
+                  session.zoomMode = mode;
+                  if (mode === 'original') {
+                    zoomLevel = 1.0;
+                    session.zoomLevel = zoomLevel;
+                  }
+                  return renderPage(pageNum);
+                },
+                setZoomLevel: function (level) {
+                  zoomLevel = Math.max(0.5, Math.min(4.0, level));
+                  zoomMode = 'manual';
+                  session.zoomMode = 'manual';
+                  session.zoomLevel = zoomLevel;
+                  return renderPage(pageNum);
+                },
+                zoomIn: function () {
+                  zoomLevel = Math.min(zoomLevel + 0.1, 4.0);
+                  zoomMode = 'manual';
+                  session.zoomMode = 'manual';
+                  session.zoomLevel = zoomLevel;
+                  return renderPage(pageNum);
+                },
+                zoomOut: function () {
+                  zoomLevel = Math.max(zoomLevel - 0.1, 0.5);
+                  zoomMode = 'manual';
+                  session.zoomMode = 'manual';
+                  session.zoomLevel = zoomLevel;
+                  return renderPage(pageNum);
+                },
                 destroy: function () {
+                  window.removeEventListener('resize', onResize);
+                  clearTimeout(resizeTimer);
                   container.innerHTML = '';
                 },
               };

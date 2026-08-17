@@ -1,10 +1,7 @@
 /* ==========================================================================
    LLL-E-Book — renderers/comic.js
-   Renders comic archives as full pages of images.
-     - CBZ: ZIP archive unpacked in-memory with JSZip (works on file://).
-     - CBR: RAR archive via node-unrar-js (ESM + WASM). Requires HTTP(S)
-       protocol to fetch the WASM binary; on file:// or fetch failure we
-       show a helpful notice.
+   Renders CBZ comic archives as full pages of images.
+   CBZ files are ZIP archives unpacked in-memory with JSZip (works on file://).
    ========================================================================== */
 (function () {
   'use strict';
@@ -20,6 +17,7 @@
     let currentLoad = 0;
     const img = document.createElement('img');
     const root = document.createElement('div');
+    root.className = 'comic-page';
     root.appendChild(img);
 
     function load(i) {
@@ -30,8 +28,13 @@
           if (currentUrl) URL.revokeObjectURL(currentUrl);
           currentUrl = url;
           img.src = url;
+          session._applyZoom();
         } else {
           URL.revokeObjectURL(url);
+        }
+      }).then(function () {
+        if (token === currentLoad) {
+          session._applyZoom();
         }
       });
     }
@@ -41,6 +44,44 @@
       format: 'comic',
       numPages: loaders.length,
       load: load,
+      zoomLevel: 1.0,
+      zoomIn: function () {
+        this.zoomLevel = Math.min(this.zoomLevel + 0.1, 4.0);
+        this._applyZoom();
+        return Promise.resolve();
+      },
+      zoomOut: function () {
+        this.zoomLevel = Math.max(this.zoomLevel - 0.1, 0.5);
+        this._applyZoom();
+        return Promise.resolve();
+      },
+      setZoomLevel: function (level) {
+        this.zoomLevel = Math.max(0.5, Math.min(4.0, level));
+        this._applyZoom();
+        return Promise.resolve();
+      },
+      _applyZoom: function () {
+        var naturalWidth = img.naturalWidth || img.width;
+        var naturalHeight = img.naturalHeight || img.height;
+        if (naturalWidth === 0 || naturalHeight === 0) return;
+
+        // Calculate the "fit" scale — same as object-fit:contain
+        var containerWidth = root.clientWidth || (root.parentElement ? root.parentElement.clientWidth : naturalWidth);
+        var containerHeight = root.clientHeight || (root.parentElement ? root.parentElement.clientHeight : naturalHeight);
+        var fitScale = Math.min(containerWidth / naturalWidth, containerHeight / naturalHeight);
+
+        // Displayed size = natural * fitScale * zoomLevel
+        // At zoom 1.0 this equals the fit size (same as maxWidth:100%, maxHeight:100%)
+        // At zoom 0.9 it is 90% of the fit size (smaller)
+        // At zoom 1.5 it is 150% of the fit size (larger)
+        var displayedWidth = naturalWidth * fitScale * this.zoomLevel;
+        var displayedHeight = naturalHeight * fitScale * this.zoomLevel;
+
+        img.style.maxWidth = 'none';
+        img.style.maxHeight = 'none';
+        img.style.width = Math.round(displayedWidth) + 'px';
+        img.style.height = Math.round(displayedHeight) + 'px';
+      },
       next: function () {
         if (idx < loaders.length - 1) {
           idx += 1;
@@ -127,124 +168,12 @@
       });
   }
 
-  function renderCbr(buf, container, name) {
-    var isFileProtocol = window.location.protocol === 'file:';
-    if (isFileProtocol) {
-      return Promise.resolve(showCbrNotice(container));
-    }
-    return loadUnrar()
-      .then(function (createExtractor) {
-        return createExtractor(buf);
-      })
-      .then(function (extractor) {
-        var imageNames = [];
-        var list = extractor.getFileList();
-        var headers = list.fileHeaders;
-        for (var h = headers.next(); !h.done; h = headers.next()) {
-          var fh = h.value;
-          if (!fh.flags.directory && IMAGE_RE.test(fh.name)) {
-            imageNames.push(fh.name);
-          }
-        }
-        imageNames.sort(function (a, b) {
-          return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
-        });
-        if (!imageNames.length) throw new Error('no-images');
-        var extracted = extractor.extract({
-          files: function (fh) {
-            return imageNames.indexOf(fh.name) !== -1;
-          }
-        });
-        var images = [];
-        var filesIter = extracted.files;
-        for (var f = filesIter.next(); !f.done; f = filesIter.next()) {
-          images.push(f.value);
-        }
-        var loaders = images.map(function (file) {
-          return function () {
-            return Promise.resolve(
-              URL.createObjectURL(new Blob([file.extraction]))
-            );
-          };
-        });
-        var built = imageSession(loaders, name, imageNames);
-        built.session.format = 'cbr';
-        container.innerHTML = '';
-        container.appendChild(built.root);
-        return built.session.load(0).then(function () {
-          return built.session;
-        });
-      })
-      .catch(function (err) {
-        if (err && err.message === 'no-images') throw err;
-        return showCbrNotice(container);
-      });
-  }
-
-  var _unrarPromise = null;
-  function loadUnrar() {
-    if (_unrarPromise) return _unrarPromise;
-    _unrarPromise = (function () {
-      var wasmUrl = 'https://cdn.jsdelivr.net/npm/node-unrar-js@2.0.2/esm/js/unrar.wasm';
-      return fetch(wasmUrl)
-        .then(function (res) {
-          if (!res.ok) throw new Error('wasm-fetch-failed');
-          return res.arrayBuffer();
-        })
-        .then(function (wasmBinary) {
-          return import('https://cdn.jsdelivr.net/npm/node-unrar-js@2.0.2/esm/index.esm.js')
-            .then(function (mod) {
-              var createExtractorFromData = mod.createExtractorFromData;
-              if (!createExtractorFromData) {
-                throw new Error('unrar-api-missing');
-              }
-              return function (data) {
-                return createExtractorFromData({ wasmBinary: wasmBinary, data: data });
-              };
-            });
-        })
-        .catch(function () {
-          _unrarPromise = null;
-          throw new Error('unrar-init-failed');
-        });
-    })();
-    return _unrarPromise;
-  }
-
-  function showCbrNotice(container) {
-    var isFileProtocol = window.location.protocol === 'file:';
-    var message = isFileProtocol
-      ? window.LLLBook.I18n.t('cbr.file_protocol_error')
-      : window.LLLBook.I18n.t('cbr.decode_error');
-
-    container.innerHTML = '<div class="notice"><p>' + message + '</p></div>';
-
-    const session = {
-      title: '',
-      format: 'cbr',
-      load: function () { return Promise.resolve(); },
-      next: function () { return Promise.resolve(); },
-      prev: function () { return Promise.resolve(); },
-      goTo: function () { return Promise.resolve(); },
-      getLocation: function () { return { type: 'none' }; },
-      destroy: function () { container.innerHTML = ''; },
-    };
-    return session;
-  }
-
-  /**
-   * render(file, container) -> Promise<session>
-   */
   function render(file, container) {
     return new Promise(function (resolve, reject) {
       const reader = new FileReader();
       reader.onload = function () {
         const buf = reader.result;
-        if (/\.cbz$/i.test(file.name)) {
-          renderCbz(buf, container, file.name).then(resolve, reject);
-        } else {
-          renderCbr(buf, container, file.name).then(resolve, reject);
-        }
+        renderCbz(buf, container, file.name).then(resolve, reject);
       };
       reader.onerror = function () {
         reject(new Error('read-error'));

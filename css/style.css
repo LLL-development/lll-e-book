@@ -74,7 +74,7 @@
 
 html,
 body {
-  height: 100%;
+  min-height: 100%;
 }
 
 body {
@@ -507,6 +507,18 @@ main {
   min-height: calc(100vh - var(--header-h) - 20px);
 }
 
+/* page-based formats: constrain reader to viewport so content fits without scrolling */
+#reader-view.reader-paged {
+  height: calc(100vh - var(--header-h) - 20px);
+  overflow: hidden;
+}
+
+#reader-view.reader-paged .reader-content {
+  padding: 8px;
+  min-height: 0;
+  overflow: auto;
+}
+
 /* gentle fade when a book opens */
 .reader-entered {
   animation: reader-fade 0.45s ease;
@@ -529,6 +541,12 @@ main {
 
 .reader-header {
   margin-bottom: 18px;
+  position: sticky;
+  top: var(--header-h);
+  z-index: 5;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 12px;
 }
 
 .reader-title-row {
@@ -836,6 +854,34 @@ main {
   height: auto;
 }
 
+/* Comic: full-page image centred in viewport */
+.comic-page {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  overflow: auto;
+}
+.comic-page img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  margin: auto;
+}
+
+/* PDF: page canvas centred; wrapper scrolls when zoomed in */
+.pdf-page {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  overflow: auto;
+}
+.pdf-page canvas {
+  display: block;
+  max-width: none;
+  max-height: none;
+  margin: auto;
+}
+
 .reader-content .loading,
 .loading {
   color: var(--muted);
@@ -851,6 +897,53 @@ main {
   border: 3px solid var(--surface);
 }
 
+/* PDF zoom toolbar buttons */
+#pdf-zoom-group { gap: 2px; }
+#pdf-zoom-group .btn { font-size: 12px; padding: 4px 8px; }
+#pdf-zoom-group .btn.is-active { color: var(--accent-strong); font-weight: 600; }
+
+/* Zoom slider for continuous zoom control */
+.zoom-slider {
+  width: 100px;
+  height: 4px;
+  appearance: none;
+  background: var(--accent-soft);
+  border-radius: 2px;
+  cursor: pointer;
+  vertical-align: middle;
+  margin-top: 7px;
+}
+
+.zoom-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  background: var(--accent);
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid var(--surface);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.zoom-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  background: var(--accent);
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid var(--surface);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.zoom-percentage {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  color: var(--muted);
+  min-width: 35px;
+  display: inline-block;
+  margin-left: 4px;
+}
+
 /* ---------- Responsive ---------- */
 @media (max-width: 640px) {
   main { padding: 18px 14px 40px; }
@@ -860,15 +953,18 @@ main {
   .app-title { font-size: 28px; }
   .section-title { font-size: 26px; }
   .lang-select { padding: 8px 30px 8px 12px; font-size: 17px; }
-
+  .reader-header { padding-left: 4px; padding-right: 4px; }
   .library-list { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 20px 14px; }
   .book-cover { height: 200px; padding: 14px; }
   .book-cover-title { font-size: 14px; }
 
   .reader-content { padding: 22px 20px; }
+  .reader-content .page { padding: 20px 16px; }
   .toc-panel { width: 100%; }
   .page-turn { animation: none; }
   .reader-entered { animation: none; }
+
+  #reader-view.reader-paged .reader-content { padding: 4px; }
 
   /* ---------- Page Jump Controls ---------- */
   .page-slider { display: none; }
@@ -933,7 +1029,6 @@ main {
 
 .page-slider::-moz-range-thumb {
   width: 14px;
-  height: 14px;
   border-radius: 50%;
   background: var(--accent);
   border: 2px solid var(--surface);

@@ -22,7 +22,7 @@
       </label>
       <button id="upload-btn" class="btn primary" type="button" data-i18n="header.upload">Upload</button>
       <input type="file" id="file-input"
-             accept=".pdf,.epub,.fb2,.cbz,.cbr,.txt,.html,.htm,.rtf"
+             accept=".pdf,.epub,.fb2,.cbz,.txt,.html,.htm,.rtf"
              multiple hidden>
     </div>
   </header>
@@ -58,6 +58,15 @@
           <div class="toolbar-group">
             <button id="font-minus" class="btn btn-icon btn-text" type="button" title="Decrease font size" data-i18n-title="tooltip.font_down" aria-label="Decrease font size">A−</button>
             <button id="font-plus" class="btn btn-icon btn-text" type="button" title="Increase font size" data-i18n-title="tooltip.font_up" aria-label="Increase font size">A+</button>
+          </div>
+          <div class="toolbar-group" id="pdf-zoom-group" style="display:none">
+            <button id="zoom-fit-page" class="btn btn-icon btn-text is-active" type="button" title="Fit page" aria-label="Fit page">Fit</button>
+            <button id="zoom-fit-width" class="btn btn-icon btn-text" type="button" title="Fit width" aria-label="Fit width">W</button>
+            <button id="zoom-100" class="btn btn-icon btn-text" type="button" title="Original size" aria-label="Original size">1:1</button>
+          </div>
+          <div class="toolbar-group" id="zoom-slider-group" style="display:none">
+            <input type="range" id="zoom-slider" min="50" max="400" value="100" step="10" class="zoom-slider" aria-label="Zoom level" />
+            <span id="zoom-percentage" class="zoom-percentage">100%</span>
           </div>
           <div class="toolbar-group">
             <button id="theme-toggle" class="btn btn-icon" type="button" title="Toggle theme" data-i18n-title="tooltip.theme" aria-label="Toggle theme">
@@ -97,7 +106,6 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/epubjs@0.3.93/dist/epub.min.js"></script>
-  <!-- unrar-wasm removed: node-unrar-js requires ESM + WASM fetch (not compatible with file://) -->
 
   <!-- App scripts (load in dependency order; no ES modules so this works on file://) -->
   <script src="js/storage.js"></script>
