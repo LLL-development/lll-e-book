@@ -29,19 +29,14 @@ Built with **pure HTML, CSS, and JavaScript** — no build tools, no package man
 | EPUB       | `.epub`         | [epub.js](https://github.com/futurepress/epub.js)
 | FB2        | `.fb2`          | [epub.js](https://github.com/futurepress/epub.js)
 | CBZ comic  | `.cbz`          | [JSZip](https://stuk.github.io/jszip/)
-| CBR comic  | `.cbr`          | [unrar-wasm](https://www.npmjs.com/package/unrar-wasm)
 
 ### Out of scope: MOBI / AZW / AZW3
 
 MOBI and AZW (including AZW3/KF8) are **not supported**. These are Amazon-proprietary formats and are almost always DRM-encrypted, which cannot be decrypted in a web browser. There is also no mature JavaScript parser for them. If you have such a file, convert it to **EPUB** (e.g. with [Calibre](https://calibre-ebook.com/)) and it will open here.
 
-### CBR note
-
-CBR (RAR) files need the browser to load a decoding WASM module, which browsers block when a page is opened directly from disk (`file://`). To read CBR files, serve the folder over HTTP first (see below). Otherwise, convert the file to CBZ (ZIP).
-
 ## How to run
 
-Use a **local static server** so every format — including CBR (RAR) — works reliably. Browsers block certain features (like loading WASM modules for RAR decoding) when a page is opened directly from disk, so serving over HTTP is the recommended way to run the app.
+Use a **local static server** so every format works reliably. Browsers block certain features when a page is opened directly from disk, so serving over HTTP is the recommended way to run the app.
 
 ```bash
 # Make sure you run this from inside the project folder:
@@ -82,7 +77,7 @@ lll-e-book/
         ├── text.js         TXT / HTML / RTF
         ├── pdf.js          PDF via pdf.js
         ├── epub.js         EPUB + FB2 via epub.js
-        └── comic.js        CBZ via JSZip; CBR via unrar-wasm
+        └── comic.js        CBZ via JSZip
 ```
 
 ## Libraries (loaded via CDN)
