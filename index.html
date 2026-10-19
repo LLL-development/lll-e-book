@@ -103,11 +103,11 @@
   </main>
 
   <!-- CDN libraries -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="js/pdf-library.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/epubjs@0.3.93/dist/epub.min.js"></script>
 
-  <!-- App scripts (load in dependency order; no ES modules so this works on file://) -->
+  <!-- App scripts (classic dependency order; PDF ESM is initialized lazily with a file-URL bridge) -->
   <script src="js/storage.js"></script>
   <script src="js/file-loader.js"></script>
   <script src="js/renderers/text.js"></script>

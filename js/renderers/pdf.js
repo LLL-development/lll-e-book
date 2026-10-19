@@ -1,24 +1,13 @@
 /* ==========================================================================
    LLL-E-Book — renderers/pdf.js
-   Renders PDF files page-by-page onto a canvas using pdf.js (loaded via CDN).
-   Requires the pdf.worker from a CDN (set below once on first render).
+   Renders PDF files page-by-page onto a canvas using the locally vendored PDF.js ESM.
+   The module and worker are initialized together before first render.
    ========================================================================== */
 (function () {
   'use strict';
 
-  const WORKER_SRC =
-    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-  let workerConfigured = false;
-
   function ensurePdfJs() {
-    if (typeof window.pdfjsLib === 'undefined') {
-      return Promise.reject(new Error('pdf-library-missing'));
-    }
-    if (!workerConfigured) {
-      window.pdfjsLib.GlobalWorkerOptions.workerSrc = WORKER_SRC;
-      workerConfigured = true;
-    }
-    return Promise.resolve();
+    return window.loadPdfJs();
   }
 
   // Build a flat TOC list from a PDF outline tree (title -> page number).
@@ -83,7 +72,7 @@
       return new Promise(function (resolve, reject) {
         const reader = new FileReader();
         reader.onload = function () {
-          const task = window.pdfjsLib.getDocument({ data: reader.result });
+          const task = window.pdfjsLib.getDocument({ ...window.pdfjsDocumentOptions, data: reader.result, isEvalSupported: false });
           task.promise.then(function (pdfDoc) {
             container.innerHTML = '';
             const wrapper = document.createElement('div');
