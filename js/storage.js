@@ -14,6 +14,7 @@
   const THEME_KEY = NS + 'theme';
   const LANG_KEY = NS + 'lang';
   const FONT_KEY = NS + 'fontsize';
+  const RAIL_COLLAPSED_KEY = NS + 'railCollapsed';
 
   function read(key, fallback) {
     try {
@@ -105,6 +106,14 @@
     },
     setFontSize(size) {
       write(FONT_KEY, size);
+    },
+
+    /* ---- reader toolbar rail collapsed state (desktop side rail) ---- */
+    getRailCollapsed() {
+      return read(RAIL_COLLAPSED_KEY, false);
+    },
+    setRailCollapsed(collapsed) {
+      write(RAIL_COLLAPSED_KEY, !!collapsed);
     },
   };
 

@@ -8,6 +8,85 @@
 
   const IMAGE_RE = /\.(png|jpe?g|gif|webp|bmp)$/i;
 
+  // Library thumbnail bounds (both axes capped) and the budget for cover
+  // generation. The cover is enrichment only: if the Image decode or the blob
+  // read never settles, the session must still open without a cover.
+  const COVER_MAX_WIDTH = 360;
+  const COVER_MAX_HEIGHT = 480;
+  const COVER_TIMEOUT_MS = 2500;
+
+  function blobToCoverDataUrl(blob) {
+    return new Promise(function (resolve, reject) {
+      const url = URL.createObjectURL(blob);
+      const image = new Image();
+      image.onload = function () {
+        try {
+          const naturalW = image.naturalWidth || image.width;
+          const naturalH = image.naturalHeight || image.height;
+          if (!naturalW || !naturalH) {
+            reject(new Error('cover-no-size'));
+            return;
+          }
+          const scale = Math.min(1, COVER_MAX_WIDTH / naturalW, COVER_MAX_HEIGHT / naturalH);
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, Math.round(naturalW * scale));
+          canvas.height = Math.max(1, Math.round(naturalH * scale));
+          const ctx = canvas.getContext('2d');
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+          const out = canvas.toDataURL('image/jpeg', 0.7);
+          // A canvas over the browser's dataURL size limit yields "data:," —
+          // treat anything that is not an image dataURL as no cover.
+          if (typeof out === 'string' && out.indexOf('data:image/') === 0) {
+            resolve(out);
+          } else {
+            reject(new Error('cover-dataurl-invalid'));
+          }
+        } catch (e) {
+          reject(e);
+        } finally {
+          URL.revokeObjectURL(url);
+        }
+      };
+      image.onerror = function () {
+        URL.revokeObjectURL(url);
+        reject(new Error('cover-image-error'));
+      };
+      image.src = url;
+    });
+  }
+
+  // Cover generation gets a hard budget: whatever happens (pending blob read,
+  // Image onload/onerror never firing, synchronous throw), it settles within
+  // COVER_TIMEOUT_MS so the session resolves even without a cover.
+  function buildCover(zip, entryName) {
+    return new Promise(function (resolve) {
+      let done = false;
+      const timer = setTimeout(function () {
+        if (done) return;
+        done = true;
+        console.warn('[COMIC] cover generation timed out');
+        resolve(null);
+      }, COVER_TIMEOUT_MS);
+      function finish(value) {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolve(value || null);
+      }
+      try {
+        const entry = zip.file(entryName);
+        if (!entry) { finish(null); return; }
+        entry.async('blob')
+          .then(blobToCoverDataUrl)
+          .then(finish, function () { finish(null); });
+      } catch (e) {
+        finish(null);
+      }
+    });
+  }
+
   /**
    * Build a page-based session over a list of page loader functions.
    */
@@ -163,6 +242,10 @@
         container.innerHTML = '';
         container.appendChild(built.root);
         return built.session.load(0).then(function () {
+          return buildCover(zip, entries[0]).then(function (dataUrl) {
+            if (dataUrl) built.session.cover = dataUrl;
+          });
+        }).then(function () {
           return built.session;
         });
       });
