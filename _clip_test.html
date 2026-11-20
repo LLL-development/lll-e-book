@@ -1,0 +1,12 @@
+<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>
+*{box-sizing:border-box;margin:0;padding:0}
+.h{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);overflow:hidden;height:64px;border-bottom:1px solid #999}
+.l{background:#cfc;height:40px;width:52px;justify-self:start}
+.t{white-space:nowrap;font-size:28px;padding:0 10px;justify-self:center;background:#ffc}
+.r{justify-self:end;background:#fcc;width:170px;height:36px}
+</style></head><body>
+<div class="h"><div class="l"></div><div class="t">LLL-E-BOOK</div><div class="r"></div></div>
+<script>
+var h=document.querySelector('.h'),t=document.querySelector('.t'),l=document.querySelector('.l'),r=document.querySelector('.r');
+document.title='VW='+window.innerWidth+' titleL='+Math.round(t.getBoundingClientRect().left)+' titleR='+Math.round(t.getBoundingClientRect().right)+' logoR='+Math.round(l.getBoundingClientRect().right)+' actionsL='+Math.round(r.getBoundingClientRect().left)+' OVERLAP_L='+(t.getBoundingClientRect().left<l.getBoundingClientRect().right)+' OVERLAP_R='+(t.getBoundingClientRect().right>r.getBoundingClientRect().left);
+</script></body></html>

@@ -316,6 +316,8 @@
           });
         }
 
+        const searchApi = window.LLLBook.Search.createSearch(container);
+
         const session = {
           title: file.name,
           format: 'text',
@@ -343,6 +345,8 @@
           getToc: function () {
             return toc;
           },
+          search: searchApi.search,
+          clearSearch: searchApi.clearSearch,
           destroy: function () {
             container.innerHTML = '';
           },

@@ -121,6 +121,56 @@
               }, 200);
             }
 
+            // Library thumbnail bounds (both axes capped) and the budget for
+            // cover rendering. The cover is enrichment only: if page.render
+            // never settles, the session must still open without a cover.
+            const COVER_MAX_WIDTH = 360;
+            const COVER_MAX_HEIGHT = 480;
+            const COVER_TIMEOUT_MS = 2500;
+
+            function buildCover() {
+              return pdfDoc.getPage(1).then(function (page) {
+                const naturalVp = page.getViewport({ scale: 1.0 });
+                const scale = Math.min(1.0, COVER_MAX_WIDTH / naturalVp.width, COVER_MAX_HEIGHT / naturalVp.height);
+                const viewport = page.getViewport({ scale: scale });
+                const coverCanvas = document.createElement('canvas');
+                coverCanvas.width = Math.max(1, Math.round(viewport.width));
+                coverCanvas.height = Math.max(1, Math.round(viewport.height));
+                const coverCtx = coverCanvas.getContext('2d');
+                return page.render({ canvasContext: coverCtx, viewport: viewport }).promise.then(function () {
+                  const out = coverCanvas.toDataURL('image/jpeg', 0.7);
+                  // A canvas over the browser's dataURL size limit yields
+                  // "data:," — treat anything not an image dataURL as no cover.
+                  return typeof out === 'string' && out.indexOf('data:image/') === 0 ? out : null;
+                });
+              });
+            }
+
+            // Always settles (null on failure or timeout) so resolve(session)
+            // runs even if the cover render hangs or throws synchronously.
+            function resolveCover() {
+              return new Promise(function (resolve) {
+                let done = false;
+                const timer = setTimeout(function () {
+                  if (done) return;
+                  done = true;
+                  console.warn('[PDF] cover generation timed out');
+                  resolve(null);
+                }, COVER_TIMEOUT_MS);
+                function finish(value) {
+                  if (done) return;
+                  done = true;
+                  clearTimeout(timer);
+                  resolve(value || null);
+                }
+                try {
+                  buildCover().then(finish, function () { finish(null); });
+                } catch (e) {
+                  finish(null);
+                }
+              });
+            }
+
             window.addEventListener('resize', onResize);
 
             renderPage(1).then(function () {
@@ -196,7 +246,10 @@
                   container.innerHTML = '';
                 },
               };
-              resolve(session);
+              resolveCover().then(function (dataUrl) {
+                if (dataUrl) session.cover = dataUrl;
+                resolve(session);
+              });
             }, reject);
           }, reject);
         };

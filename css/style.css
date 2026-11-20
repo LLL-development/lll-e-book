@@ -32,6 +32,13 @@
   --reader-font-size: 18px;
   --header-h: 64px;
 
+  /* reader toolbar side rail (see the reader-rail rules) */
+  --rail-w: 64px;          /* rail width: fits icon buttons + small controls */
+  --rail-gap: 18px;        /* gap between the rail and the reading area */
+  --rail-anchor: 1440px;   /* == main.reader-wide max-width, keeps the rail
+                              glued to the main column's right edge */
+  --card-radius: 16px;     /* .reader-content corner radius */
+
   --shadow-soft: 0 1px 2px rgba(90, 60, 20, 0.06), 0 10px 26px rgba(90, 60, 20, 0.07);
   --shadow-lift: 0 2px 5px rgba(90, 60, 20, 0.09), 0 16px 38px rgba(90, 60, 20, 0.12);
 }
@@ -56,6 +63,28 @@
 
   --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 26px rgba(0, 0, 0, 0.3);
   --shadow-lift: 0 2px 5px rgba(0, 0, 0, 0.35), 0 16px 38px rgba(0, 0, 0, 0.35);
+}
+
+[data-theme="sepia"] {
+  --bg: #ece0c8;
+  --bg-2: #e4d6bb;
+  --surface: #f3ead4;
+  --surface-2: #e8dcc0;
+
+  --text: #3a2f22;
+  --muted: #7d6b52;
+  --line: #d8c6a4;
+  --line-soft: #e4d6bb;
+
+  --accent: #9c5a33;
+  --accent-strong: #85472a;
+  --accent-soft: rgba(156, 90, 51, 0.14);
+  --tape: rgba(206, 152, 110, 0.45);
+  --ink: #4a3b28;
+  --ink-soft: rgba(74, 59, 40, 0.1);
+
+  --shadow-soft: 0 1px 2px rgba(74, 59, 40, 0.06), 0 10px 26px rgba(74, 59, 40, 0.07);
+  --shadow-lift: 0 2px 5px rgba(74, 59, 40, 0.09), 0 16px 38px rgba(74, 59, 40, 0.12);
 }
 
 /* Book-cover tone blocks (cycled by JS to give the library visual variety) */
@@ -358,6 +387,13 @@ main {
   margin: 0 auto;
 }
 
+/* Reader view gets a wider canvas (toggled on <main> by app.js showReader).
+   The right side reserves space for the fixed toolbar rail (>640px, see the
+   reader-rail section) so content never slides under it. */
+main.reader-wide {
+  max-width: 1440px;
+}
+
 .section-title {
   position: relative;
   display: inline-block;
@@ -457,6 +493,31 @@ main {
   opacity: 0.5;
 }
 
+/* Real cover image (from Covers / IndexedDB). Fills the card top, keeps the
+   card's rounded corners, and overlays the title on a soft gradient scrim. */
+.book-cover-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 6px 12px 0 0;
+}
+
+/* With a real cover image there is no overlay title, so the scrim that used to
+   sit under it is hidden too. The placeholder (no .has-cover) keeps its title. */
+.book-cover.has-cover::after {
+  display: none;
+}
+
+.book-cover.has-cover .book-cover-title {
+  display: none;
+}
+
+.book-cover.has-cover .book-cover-rule {
+  display: none;
+}
+
 .book-body {
   padding: 14px 16px 18px;
 }
@@ -466,6 +527,17 @@ main {
   font-size: 15.5px;
   font-weight: 600;
   color: var(--text);
+  margin-bottom: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.book-author {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-style: italic;
+  color: var(--muted);
   margin-bottom: 3px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -500,16 +572,20 @@ main {
   font-family: var(--font-ui);
 }
 
-/* ---------- Reader ---------- */
+/* ---------- Reader ----------
+   One-screen reading (desktop >640px): the page itself never scrolls. The
+   reader fills exactly the viewport below the app header — main.reader-wide
+   zeroes its vertical padding in the rail media block and #reader-view gets a
+   fixed height there — so the reading card (.reader-content) is the only
+   scrolling surface. Mobile (<=640px) keeps whole-page scrolling: no height
+   is set outside the min-width:641px block. */
 #reader-view {
   display: flex;
   flex-direction: column;
-  min-height: calc(100vh - var(--header-h) - 20px);
 }
 
 /* page-based formats: constrain reader to viewport so content fits without scrolling */
 #reader-view.reader-paged {
-  height: calc(100vh - var(--header-h) - 20px);
   overflow: hidden;
 }
 
@@ -549,12 +625,29 @@ main {
   padding-bottom: 12px;
 }
 
+/* On desktop the reader is a fixed one-screen column, so nothing scrolls and
+   the sticky behaviour is moot — drop it there (and with it the sticky's
+   reserved top offset) while keeping the visual card styling. */
+@media (min-width: 641px) {
+  .reader-header {
+    position: static;
+    flex-shrink: 0;
+  }
+}
+
 .reader-title-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 14px;
   margin-bottom: 12px;
   padding: 0 4px;
 }
 
 .reader-title-row .book-title {
+  flex: 0 1 auto;
+  min-width: 0;
   font-family: var(--font-serif);
   font-size: 22px;
   font-weight: 600;
@@ -568,6 +661,83 @@ main {
   word-wrap: break-word;
 }
 
+/* The title is centred on the row's own content box. With flex:0 1 auto it
+   hugs its text and sits at the row centre, so it looks exactly as before
+   whether or not the side controls are shown (JS sets inline display on the
+   zoom group). Both the home button (left) and the zoom slider (right) float
+   absolute over the row's edges — absolute elements take no flex space, so
+   neither one's shown/hidden state can shift the title's centre. A long
+   title may run underneath them; the header/pill backgrounds keep it legible
+   (same trade-off the zoom slider already made). */
+.reader-title-row #close-btn {
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.reader-title-row #zoom-slider-group {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* Narrow screens: the title keeps its own line, the zoom group centers on
+   the next one — never squeezed beside a long title. Declared here (not in
+   the responsive section further down) so no extra media block is needed. */
+@media screen and (max-width: 640px) {
+  .reader-title-row {
+    flex-wrap: wrap;
+  }
+
+  .reader-title-row .book-title {
+    flex: 1 1 100%;
+  }
+
+  .reader-title-row #zoom-slider-group {
+    position: static;
+    transform: none;
+    margin: 0 auto;
+  }
+
+  /* Home floats absolute over the row's left edge on desktop; on mobile it
+     stays absolute but shrinks to an icon-only pill. The title keeps its own
+     full-width line (flex:1 1 100%) and gets a top offset so its first line
+     never sits under the pill; the zoom group drops to static below. */
+  .reader-title-row #close-btn {
+    top: 0;
+    transform: none;
+  }
+
+  .reader-title-row #close-btn.btn-home {
+    padding: 6px 7px;
+  }
+
+  .reader-title-row #close-btn .btn-label {
+    display: none;
+  }
+
+  .reader-title-row .book-title {
+    padding-top: 34px;
+  }
+
+  /* Zoom inline in the sticky title row: shrink the slider so the row stays
+     compact on narrow screens. */
+  .zoom-inline {
+    padding: 4px 10px;
+  }
+
+  .zoom-inline .zoom-slider {
+    width: 96px;
+  }
+}
+
+/* Progress label is read-only and duplicates the editable position control
+   (page input / slider) whenever #page-jump is shown — JS adds/removes
+   .hide-progress on #progress-label alongside #page-jump's visibility. */
+.progress-label.hide-progress { display: none; }
+
 .reader-toolbar {
   display: flex;
   align-items: center;
@@ -578,6 +748,275 @@ main {
   border-radius: 14px;
   padding: 10px 12px;
   box-shadow: var(--shadow-soft);
+}
+
+/* ---------- Reader toolbar as a right-side vertical rail (desktop >640px) ----------
+   The rail is position:fixed so it stays reachable while reading. It lives at
+   the right edge of the centered main column (main.reader-wide reserves
+   padding-right for it), so it never overlaps .reader-content. Collapsed via
+    #rail-toggle (JS toggles .rail-collapsed on #reader-view and <body>); a
+    floating #rail-expand-float tab brings it back. Mobile (<=640px) undoes
+    all of this in the responsive block below, restoring the original top-bar
+    layout. */
+
+
+/* rail-only controls: hidden by default (mobile / no-JS keeps the old bar).
+   JS (app.js initRailToggle) sets inline display:flex on #rail-toggle on
+   desktop only; the mobile block below forces both controls back off. */
+.rail-toggle,
+.rail-expand-float {
+  display: none;
+}
+
+@media (min-width: 641px) {
+  /* One-screen reading: main contributes no vertical padding, so the reader's
+     fixed height (header-h subtracted below) fits the viewport exactly and the
+     page itself never shows a vertical scrollbar. */
+  main.reader-wide {
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+
+  #reader-view {
+    height: calc(100vh - var(--header-h));
+  }
+
+  /* Symmetry offset: main.reader-wide reserves padding-right for the fixed
+     rail (asymmetric box), which would pull the title row's centre left of the
+     screen. A matching padding-left on the title row re-centres its content box
+     on the viewport; the zoom slider floats absolute at the right edge, so it
+     never shifts this centre. Declared AFTER the rail-reservation rule above
+     (which sets padding-right) so both longhands apply. */
+  main.reader-wide .reader-title-row {
+    padding-left: calc(var(--rail-w) + var(--rail-gap));
+  }
+
+  main.reader-wide {
+    padding-right: calc(26px + var(--rail-w) + var(--rail-gap));
+  }
+
+  .reader-toolbar {
+    /* Vertical rail. top/bottom are set in px by app.js syncRailPosition()
+       (desktop only) so the rail spans EXACTLY the reading card's visible
+       height: top = card's visible top edge, bottom = viewport bottom minus
+       the card's visible bottom edge. The calc() fallbacks below apply before
+       JS runs / on resize races; the 200px floor keeps a minimum-height rail
+       at tiny viewports (JS defers to these fallbacks — clearing inline
+       top/bottom — when the card is shorter than 200px). */
+    position: fixed;
+    top: calc(var(--header-h) + 18px);
+    bottom: max(18px, calc((var(--header-h) + 36px) / 2));
+    left: auto;
+    right: max(12px, calc((100vw - var(--rail-anchor)) / 2 + 26px));
+    width: var(--rail-w);
+    height: auto;
+    min-height: 0; /* inline top/bottom from JS define the height */
+    max-height: none;
+    flex-direction: column;
+    align-items: stretch;
+    flex-wrap: nowrap;
+    gap: 8px;
+    padding: 10px 8px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    z-index: 6; /* above the sticky reader header (5), below app header (10) */
+    transition: transform 0.25s ease, opacity 0.25s ease;
+  }
+
+  /* 案1: melt the rail into the wall — drop the card border/shadow, keep a thin
+     translucent surface with only a left hairline. backdrop-filter is ignored
+     where unsupported (harmless). */
+  .reader-toolbar {
+    background: color-mix(in srgb, var(--surface) 55%, transparent);
+    border: none;
+    box-shadow: none;
+    border-left: 1px solid var(--line-soft);
+    backdrop-filter: blur(6px);
+  }
+
+  /* 案3: drop the separators in the rail and group by whitespace instead.
+     Mobile (<=640px) keeps its separators (this block is min-width only). */
+  .reader-toolbar {
+    gap: 10px;
+  }
+
+  .reader-toolbar .toolbar-group {
+    gap: 3px;
+  }
+
+  .reader-toolbar .toolbar-sep {
+    display: none;
+  }
+
+  /* 案2: 44px pill icon buttons, quiet by default, accent-soft when active. */
+  .reader-toolbar .btn-icon {
+    min-width: 44px;
+    min-height: 44px;
+    border-radius: 12px;
+    color: var(--muted);
+  }
+
+  .reader-toolbar .btn-icon:hover {
+    background: var(--ink-soft);
+    color: var(--ink);
+  }
+
+  .reader-toolbar .btn-icon:active {
+    transform: scale(0.94);
+  }
+
+  .reader-toolbar .btn-icon.is-active,
+  .reader-toolbar #bookmark-btn.is-bookmarked {
+    color: var(--text);
+    background: var(--accent-soft);
+  }
+
+  .reader-toolbar .btn-icon:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  /* 案7: unify the line-art weight; bookmark fills only when active. */
+  .reader-toolbar .icon {
+    stroke-width: 1.6;
+  }
+
+  .reader-toolbar #bookmark-btn:not(.is-bookmarked) .icon-fill {
+    fill: none;
+    stroke: currentColor;
+  }
+
+  .reader-toolbar .toolbar-group {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .reader-toolbar .toolbar-sep {
+    width: auto;
+    height: 1px;
+    margin: 2px 4px;
+  }
+
+  /* Home now lives in the title row (see the reader-title-row rules): icon
+     only on desktop, so it stays a quiet corner control beside the title. */
+  #close-btn.btn-home {
+    justify-content: center;
+    padding: 8px 6px;
+  }
+
+  #close-btn .btn-label {
+    display: none;
+  }
+
+  /* horizontal-bar right-alignment is meaningless in a vertical rail */
+  .reader-toolbar .progress-label {
+    margin-left: 0;
+    width: auto;
+    min-width: 0;
+    text-align: center;
+  }
+
+  /* 案5: quiet the progress label in the rail — drop the uppercase, centre it. */
+  .reader-toolbar .progress-label {
+    font-size: 12px;
+    letter-spacing: 0.02em;
+    text-transform: none;
+    color: var(--muted);
+    text-align: center;
+  }
+
+  .reader-toolbar .page-jump {
+    margin-left: 0;
+    width: auto;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+
+  .reader-toolbar .page-slider {
+    width: 100%;
+  }
+
+  /* 案5: thin progress bar. The filled portion is driven by --fill, which
+     app.js sets alongside slider.value (updateSliderFromSession + input). */
+  .reader-toolbar .page-slider {
+    height: 6px;
+    border-radius: 99px;
+    background: linear-gradient(var(--accent), var(--accent)) no-repeat, var(--line);
+    background-size: var(--fill, 0%) 100%;
+  }
+
+  .rail-toggle {
+    display: none; /* JS enables it on desktop only (inline style) */
+    align-self: flex-end;
+    padding: 6px;
+  }
+
+  /* 案4: auto-fade the idle rail. Gated on prefers-reduced-motion (always full
+     opacity when the user opts out of motion) and revived on hover / Tab focus
+     (:focus-within). Kept BEFORE #reader-view.rail-collapsed below so that rule
+     wins by source order at equal specificity — a collapsed rail must stay
+     hidden (opacity:0 + visibility:hidden), never revived by :hover/:focus. */
+  @media (prefers-reduced-motion: no-preference) {
+    .reader-toolbar {
+      opacity: 0.45;
+      transition: transform 0.25s ease, opacity 0.3s ease;
+    }
+
+    .reader-toolbar:hover,
+    .reader-toolbar:focus-within {
+      opacity: 1;
+    }
+  }
+
+  #reader-view.rail-collapsed .reader-toolbar {
+    transform: translateX(calc(100% + 24px));
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  .rail-expand-float {
+    position: fixed;
+    top: calc(var(--header-h) + 18px);
+    right: max(12px, calc((100vw - var(--rail-anchor)) / 2 + 26px));
+    width: var(--rail-w);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    box-shadow: var(--shadow-soft);
+    z-index: 6;
+  }
+
+  /* the expand tab only makes sense while a book is open (body.reader-active
+     is toggled by app.js showReader/showLibrary) */
+  body.reader-active.rail-collapsed .rail-expand-float {
+    display: flex;
+  }
+
+  /* while the rail is collapsed, main gives its reserved space back to the text */
+  body.rail-collapsed main.reader-wide {
+    padding-right: 26px;
+  }
+
+  /* ...and the title row drops its symmetry offset with it. */
+  body.rail-collapsed main.reader-wide .reader-title-row {
+    padding-left: 0;
+  }
+
+  /* Fix 3: hide the rail's vertical scrollbar visually (the JS-pinned rail can
+     be shorter than its stacked 44px buttons) while overflow-y:auto above keeps
+     it scrollable when content overflows. */
+  .reader-toolbar {
+    scrollbar-width: none;      /* Firefox */
+    -ms-overflow-style: none;   /* legacy Edge/IE */
+  }
+
+  .reader-toolbar::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
+  }
 }
 
 .toolbar-group {
@@ -603,6 +1042,19 @@ main {
   min-height: 0;
 }
 
+/* Desktop one-screen reading: the body row and the card must shrink to the
+   leftover height (flex-basis 0) instead of growing with their content, so
+   only the card scrolls internally and the page never does. */
+@media (min-width: 641px) {
+  .reader-body {
+    flex: 1 1 0;
+  }
+
+  #book-container.reader-content {
+    flex: 1 1 0;
+  }
+}
+
 .toc-panel {
   width: 264px;
   background: var(--surface);
@@ -617,6 +1069,18 @@ main {
 
 .toc-panel.open {
   display: block;
+  animation: toc-in 0.22s ease;
+}
+
+@keyframes toc-in {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toc-panel.open {
+    animation: none;
+  }
 }
 
 .toc-panel h3 {
@@ -624,6 +1088,57 @@ main {
   font-size: 15px;
   margin-bottom: 12px;
   color: var(--text);
+}
+
+/* ---------- Side-panel accordion (TOC / Bookmarks / Search) ---------- */
+.panel-acc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 2px 0;
+  font-family: var(--font-serif);
+  font-size: 15px;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: color 0.15s ease;
+}
+
+.panel-acc-header:hover {
+  color: var(--accent-strong);
+}
+
+.panel-acc-header:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.panel-acc-caret {
+  flex-shrink: 0;
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid currentColor;
+  transform: rotate(-90deg);
+  transition: transform 0.18s ease;
+}
+
+.panel-acc-header[aria-expanded="true"] .panel-acc-caret {
+  transform: rotate(0deg);
+}
+
+.panel-acc-body {
+  margin-top: 12px;
+}
+
+.panel-acc-body[hidden] {
+  display: none;
 }
 
 .toc-panel a {
@@ -692,6 +1207,76 @@ main {
 .bookmark-remove:hover {
   color: var(--accent-strong);
   background: var(--accent-soft);
+}
+
+/* ---------- Search within the book ---------- */
+.search-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.search-input {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13.5px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.search-input:focus {
+  border-color: var(--accent);
+}
+
+.search-btn {
+  padding: 7px 12px;
+  font-size: 13px;
+}
+
+.search-count {
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  color: var(--muted);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 2px 4px 6px;
+}
+
+.search-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  padding: 7px 9px;
+  margin-bottom: 4px;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.search-item:hover {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+/* in-book search highlight (theme-aware, distinct from text selection) */
+mark.book-search-hit {
+  background: var(--accent-soft);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 1px;
+  box-shadow: inset 0 -2px 0 var(--accent);
 }
 
 .book-stored {
@@ -808,6 +1393,58 @@ main {
   100% { transform: scale(1); }
 }
 
+/* ---------- Drag & drop overlay ---------- */
+.drop-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(80, 55, 25, 0.35);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none; /* drops pass through to the document handlers */
+  transition: opacity 0.15s ease, visibility 0.15s ease;
+  z-index: 90; /* above .app-header (10), below .reader-toast (100) */
+}
+
+.drop-overlay.visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+.drop-overlay-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 36px 56px;
+  background: var(--surface);
+  border: 2px dashed var(--accent);
+  border-radius: 18px;
+  box-shadow: var(--shadow-lift);
+  color: var(--text);
+  max-width: min(90vw, 480px);
+  text-align: center;
+}
+
+.drop-overlay-icon {
+  width: 44px;
+  height: 44px;
+  stroke: var(--accent-strong);
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.drop-overlay-text {
+  font-family: var(--font-hand);
+  font-size: 30px;
+  line-height: 1.2;
+  color: var(--accent-strong);
+}
+
 .reader-content {
   flex: 1;
   background: var(--surface);
@@ -819,8 +1456,17 @@ main {
   font-family: var(--font-serif);
   font-size: var(--reader-font-size);
   color: var(--text);
-  line-height: 1.8;
-  min-height: 520px;
+  line-height: 1.75;
+}
+
+/* Reader text readability: the card grows with main.reader-wide, but keep a
+   sane measure (line length) by widening the inner side padding on wide
+   screens; paged formats (PDF/CBZ) use the full width instead. */
+@media (min-width: 1200px) {
+  #reader-view:not(.reader-paged) .reader-content {
+    padding-left: clamp(56px, 9vw, 130px);
+    padding-right: clamp(56px, 9vw, 130px);
+  }
 }
 
 .reader-content pre {
@@ -902,6 +1548,13 @@ main {
 #pdf-zoom-group .btn { font-size: 12px; padding: 4px 8px; }
 #pdf-zoom-group .btn.is-active { color: var(--accent-strong); font-weight: 600; }
 
+/* Theme picker (Light / Sepia / Dark segmented buttons) */
+.theme-group { gap: 2px; }
+.theme-group .btn.is-active {
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+}
+
 /* Zoom slider for continuous zoom control */
 .zoom-slider {
   width: 100px;
@@ -944,15 +1597,114 @@ main {
   margin-left: 4px;
 }
 
+/* ---------- Zoom slider (inline in the sticky reader title row) ----------
+   #zoom-slider-group lives inside .reader-title-row, right of #book-title
+   (index.html). The header is sticky, so no fixed positioning or JS geometry
+   sync is needed anymore. JS only toggles the group's inline display
+   (flex/none, PDF/CBZ only) — while hidden nothing renders here at all. */
+.zoom-inline {
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-soft);
+  padding: 6px 12px;
+  border-radius: 99px;
+}
+
+.zoom-inline .zoom-slider {
+  width: 150px;
+}
+
 /* ---------- Responsive ---------- */
+/* Mobile bottom page-turn bar: hidden by default (desktop), enabled only in
+   the @media block below, where it provides page turning. */
+.mobile-nav {
+  display: none;
+}
+
+/* Top toolbar prev/next group: visible by default (desktop), hidden only
+   inside the mobile media block below. */
+.toolbar-nav {
+  display: flex;
+}
+
 @media (max-width: 640px) {
   main { padding: 18px 14px 40px; }
 
-  .app-header { padding: 0 14px; }
+  /* Mobile keeps the original top-bar toolbar layout: undo the desktop rail.
+     The rail rules live in @media (min-width: 641px) so they never apply at
+     <=640px; these resets are a belt-and-braces guarantee that the mobile
+     look does not depend on source order. */
+  main.reader-wide { max-width: 1100px; padding-right: 14px; }
+  .reader-toolbar {
+    position: static;
+    top: auto;
+    bottom: auto;
+    left: auto;
+    width: auto;
+    height: auto;
+    min-height: 0;
+    max-height: none;
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 10px 12px;
+    overflow: visible;
+    transform: none;
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .reader-toolbar .toolbar-group { flex-direction: row; align-items: center; }
+  .reader-toolbar .toolbar-sep { width: 1px; height: 22px; margin: 0 6px; }
+  /* Home in the title row on mobile: icon-only absolute pill (see the
+     reader-title-row 640px block). Undo the desktop rail's extra padding so
+     the corner control stays compact. */
+  #close-btn.btn-home { justify-content: center; padding: 6px 7px; }
+  #close-btn .btn-label { display: none; }
+
+  .reader-toolbar .progress-label { text-align: right; }
+  /* restore the horizontal-bar right-alignment on mobile */
+  .reader-toolbar .progress-label { margin-left: auto; min-width: 78px; }
+  .reader-toolbar .page-jump {
+    margin-left: auto;
+    width: auto;
+    flex-direction: row;
+    align-items: center;
+    gap: 4px;
+  }
+  /* rail-only controls off on mobile (JS sets inline display:flex on
+     #rail-toggle on desktop; !important wins over the inline style) */
+  .rail-expand-float,
+  #rail-toggle.rail-toggle { display: none !important; }
+
+  .app-header {
+    padding: 0 14px;
+    /* Center title column shrinks (minmax(0,1fr)) so it can ellipsis instead
+       of overlapping the right-hand actions. logo (auto) and actions (auto)
+       keep their content width; only the middle flexes. */
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    overflow: hidden;
+  }
   .logo { height: 40px; }
-  .app-title { font-size: 28px; }
+  .header-left::after { display: none; }
+  .app-title {
+    font-size: 28px;
+    white-space: nowrap;
+    letter-spacing: 0;
+    padding: 0 10px;
+    /* Allow the grid child to shrink below its intrinsic width and clip with
+       an ellipsis when space runs short, so it never overlaps #lang-select. */
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   .section-title { font-size: 26px; }
+  .header-actions { gap: 6px; min-width: 0; flex-shrink: 0; }
   .lang-select { padding: 8px 30px 8px 12px; font-size: 17px; }
+  #upload-btn { padding: 8px 10px; font-size: 13px; }
   .reader-header { padding-left: 4px; padding-right: 4px; }
   .library-list { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 20px 14px; }
   .book-cover { height: 200px; padding: 14px; }
@@ -969,6 +1721,109 @@ main {
   /* ---------- Page Jump Controls ---------- */
   .page-slider { display: none; }
   .page-input { width: 64px; }
+
+  /* Hide the top toolbar prev/next on mobile only — the fixed bottom
+     bar (.mobile-nav, enabled below) already provides page turning.
+     Buttons stay in the DOM, so their click handlers keep working. */
+  .toolbar-nav { display: none; }
+
+  /* ---------- Mobile bottom page-turn bar (enabled on mobile only) ---------- */
+  .mobile-nav {
+    display: flex;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 16px;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom)); /* iOS notch / home indicator */
+    background: var(--surface);
+    border-top: 1px solid var(--line);
+    box-shadow: var(--shadow-lift);
+    /* above the sticky reader header (z-index: 5) and .app-header (10),
+       below .drop-overlay (90) and .reader-toast (100) */
+    z-index: 20;
+  }
+
+  .mobile-nav-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 64px;
+    min-width: 44px;
+    height: 48px;
+    min-height: 44px; /* WCAG 2.2 / Apple HIG tap target */
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--surface-2);
+    color: var(--text);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mobile-nav-btn:active {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent-strong);
+  }
+
+  .mobile-nav-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .mobile-nav-btn .icon {
+    width: 24px;
+    height: 24px;
+  }
+
+  /* keep the last lines of content clear of the fixed bar */
+  .reader-content {
+    padding-bottom: calc(64px + env(safe-area-inset-bottom));
+  }
+
+  #reader-view.reader-paged .reader-content {
+    padding-bottom: calc(64px + env(safe-area-inset-bottom));
+  }
+
+  /* Zoom now lives inline in the sticky title row (.zoom-inline, sized above);
+     nothing fixed to clear here anymore. */
+
+  /* Undo the desktop one-screen rules: mobile scrolls the whole page again, so
+     the card must keep a usable minimum height and the reader no vertical cap.
+     (The rail media block's flex-basis/padding/title-row rules are min-width
+     only and never apply here; this is a belt-and-braces floor.) */
+  #reader-view:not(.reader-paged) {
+    min-height: calc(100vh - var(--header-h));
+  }
+
+  .reader-content {
+    min-height: 320px;
+  }
+}
+
+/* narrower phones: shrink the title further instead of wrapping */
+@media (max-width: 420px) {
+  .app-title { font-size: 22px; padding: 0 6px; }
+  .lang-select { padding: 7px 26px 7px 10px; font-size: 15px; }
+  #upload-btn { padding: 7px 8px; font-size: 12px; }
+}
+
+/* very narrow phones (< ~373px): the logo + right-hand actions (#lang-select +
+   gap + #upload-btn) together exceed the viewport, so the auto-width columns
+   push past .app-header's overflow:hidden and visually collide with the title.
+   The middle title column already truncates (minmax(0,1fr) + ellipsis), so the
+   only thing that must fit is logo + actions inside (viewport - 28px padding).
+   Shrink those intrinsic widths here. Placed AFTER the 420px block so these
+   narrower rules win by source order at equal specificity. */
+@media (max-width: 380px) {
+  .logo { height: 32px; padding: 3px; }
+  .header-actions { gap: 4px; }
+  .lang-select { padding: 6px 22px 6px 8px; font-size: 13px; background-position: right 7px center; }
+  #upload-btn { padding: 6px 6px; font-size: 11px; }
+  .app-title { font-size: 18px; padding: 0 4px; }
 }
 
 /* ---------- Page Jump Controls ---------- */
