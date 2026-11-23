@@ -306,6 +306,118 @@
   }
 
   /**
+   * Extract book title and author(s) from <description><title-info>.
+   * Returns { title, author } with empty strings when absent. Multiple
+   * authors are joined with ", ". Author names combine
+   * first/middle/last when present, otherwise fall back to <nickname>.
+   */
+  function extractMeta(doc) {
+    var meta = { title: '', author: '' };
+    var desc = doc.querySelector('description');
+    if (!desc) return meta;
+    var titleInfo = desc.querySelector('title-info');
+    if (!titleInfo) return meta;
+
+    var titleEl = titleInfo.querySelector('book-title');
+    if (!titleEl) titleEl = titleInfo.querySelector('article-title');
+    if (titleEl) meta.title = (titleEl.textContent || '').trim();
+
+    var names = [];
+    titleInfo.querySelectorAll('author').forEach(function (a) {
+      // Only direct <author> children of this title-info (skip nested ones).
+      if (a.parentNode !== titleInfo) return;
+      function txt(tag) {
+        var el = a.querySelector(tag);
+        return el ? (el.textContent || '').trim() : '';
+      }
+      var parts = [txt('first-name'), txt('middle-name'), txt('last-name')];
+      var name = parts.filter(Boolean).join(' ');
+      if (!name) name = txt('nickname');
+      if (name) names.push(name);
+    });
+    meta.author = names.join(', ');
+    return meta;
+  }
+
+  /**
+   * Library thumbnail bounds (both axes capped) and the budget for cover
+   * resolution. The cover is enrichment only: if the shrink pipeline never
+   * settles, the session must still open without a cover.
+   */
+  var COVER_MAX_WIDTH = 360;
+  var COVER_MAX_HEIGHT = 480;
+  var COVER_TIMEOUT_MS = 2500;
+
+  /**
+   * Shrink a dataURL image to a library-thumbnail-sized JPEG dataURL.
+   * Purely best-effort: any failure (decode error, tainted canvas) resolves
+   * with null so the caller leaves session.cover unset and the book opens.
+   */
+  function shrinkToDataURL(src) {
+    return new Promise(function (resolve) {
+      var img = new Image();
+      img.onload = function () {
+        try {
+          var w = img.naturalWidth || img.width;
+          var h = img.naturalHeight || img.height;
+          if (!w || !h) { resolve(null); return; }
+          var scale = Math.min(1, COVER_MAX_WIDTH / w, COVER_MAX_HEIGHT / h);
+          var canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, Math.round(w * scale));
+          canvas.height = Math.max(1, Math.round(h * scale));
+          var ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          var out = canvas.toDataURL('image/jpeg', 0.82);
+          // A canvas over the browser's dataURL size limit yields "data:," —
+          // treat anything that is not an image dataURL as no cover.
+          resolve(typeof out === 'string' && out.indexOf('data:image/') === 0 ? out : null);
+        } catch (e) {
+          resolve(null);
+        }
+      };
+      img.onerror = function () { resolve(null); };
+      try {
+        img.src = String(src);
+      } catch (e) {
+        resolve(null);
+      }
+    });
+  }
+
+  /**
+   * Resolve the FB2 coverpage image to a dataURL via the <binary> map.
+   * FB2 standard: <description><title-info><coverpage><image href="#id"/>.
+   * The href may use the xlink:href attribute. Returns null when absent or
+   * unresolved.
+   */
+  function extractCover(doc, binaries) {
+    var desc = doc.querySelector('description');
+    if (!desc) return null;
+    var titleInfo = desc.querySelector('title-info');
+    if (!titleInfo) return null;
+    var coverpage = titleInfo.querySelector('coverpage');
+    if (!coverpage) return null;
+    var imgEl = coverpage.querySelector('image');
+    if (!imgEl) return null;
+    // FB2 <image> uses the namespaced xlink:href. getAttribute('xlink:href')
+    // only works when the parser kept the prefixed name (HTML mode); in XML
+    // mode the attribute is namespace-local and needs getAttributeNS. Try all
+    // three so the cover is found either way.
+    var href = '';
+    try {
+      if (typeof imgEl.getAttributeNS === 'function') {
+        href = imgEl.getAttributeNS('http://www.w3.org/1999/xlink', 'href') || '';
+      }
+    } catch (e) { /* fall through to plain getAttribute */ }
+    if (!href) href = imgEl.getAttribute('xlink:href') || '';
+    if (!href) href = imgEl.getAttribute('href') || '';
+    if (!href) return null;
+    // binaries keys are built as '#' + id (see render()); normalize a bare id.
+    var src = binaries[href] || (href.charAt(0) !== '#' ? binaries['#' + href] : null);
+    return src || null;
+  }
+
+  /**
    * render(file, container) -> Promise<session>
    * Scroll-based session: location is a 0..1 ratio of the container's scroll.
    */
@@ -396,8 +508,61 @@
             window.scrollTo({ top: r * maxDocScroll, behavior: 'auto' });
           }
 
-          var session = {
-            title: file.name,
+          var meta = extractMeta(doc);
+          var searchApi = window.LLLBook.Search.createSearch(container);
+
+          // Best-effort coverpage: resolve before the session is returned so
+          // app.js can persist it. The wrapper below always settles within
+          // COVER_TIMEOUT_MS (null on failure/timeout), and buildSession
+          // failures fall back to a cover-less session, so a cover problem can
+          // never block opening the book.
+          function resolveCover() {
+            return new Promise(function (resolve) {
+              var done = false;
+              var timer = setTimeout(function () {
+                if (done) return;
+                done = true;
+                resolve(null);
+              }, COVER_TIMEOUT_MS);
+              function finish(value) {
+                if (done) return;
+                done = true;
+                clearTimeout(timer);
+                resolve(value || null);
+              }
+              try {
+                var coverSrc = extractCover(doc, binaries);
+                if (!coverSrc) { finish(null); return; }
+                shrinkToDataURL(coverSrc).then(finish, function () { finish(null); });
+              } catch (e) {
+                finish(null);
+              }
+            });
+          }
+
+          function settleWithCover() {
+            resolveCover().then(function (cover) {
+              var session = null;
+              try {
+                session = buildSession(cover);
+              } catch (e) {
+                session = null;
+              }
+              if (!session) {
+                try {
+                  session = buildSession(null);
+                } catch (e2) {
+                  reject(new Error('fb2-render: ' + e2.message));
+                  return;
+                }
+              }
+              resolve(session);
+            });
+          }
+          function buildSession(cover) {
+            var session = {
+            title: meta.title || file.name,
+            author: meta.author,
             format: 'fb2',
             next: function () {
               window.scrollBy({ top: window.innerHeight * 0.9, behavior: 'smooth' });
@@ -429,11 +594,17 @@
             getToc: function () {
               return toc;
             },
+            search: searchApi.search,
+            clearSearch: searchApi.clearSearch,
             destroy: function () {
               container.innerHTML = '';
             },
-          };
-          resolve(session);
+            };
+            if (cover) session.cover = cover;
+            return session;
+          }
+
+          settleWithCover();
         } catch (e) {
           reject(new Error('fb2-render: ' + e.message));
         }

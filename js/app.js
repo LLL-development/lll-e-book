@@ -43,27 +43,165 @@
 
   /* ---------------- Views ---------------- */
 
+  // Reader-only layout helpers: widen <main> and sync the side-rail collapse
+  // state (desktop rail is CSS-only via .rail-collapsed on #reader-view).
+  function setMainWide(on) {
+    const m = document.querySelector('main');
+    if (m) m.classList.toggle('reader-wide', !!on);
+  }
+
+  function syncRailState() {
+    const rv = $('#reader-view');
+    if (!rv) return;
+    const collapsed = window.LLLBook.Storage.getRailCollapsed();
+    rv.classList.toggle('rail-collapsed', !!collapsed);
+    document.body.classList.toggle('rail-collapsed', !!collapsed);
+    const toggle = $('#rail-toggle');
+    if (toggle) toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  }
+
   function showReader(title, fmt) {
     $('#book-title').textContent = title;
     $('#library-view').classList.add('hidden');
+    document.body.classList.add('reader-active');
     const rv = $('#reader-view');
     rv.classList.remove('hidden');
+    setMainWide(true);
+    syncRailState();
     const isPaged = fmt && (fmt.key === 'pdf' || fmt.key === 'cbz');
     rv.classList.toggle('reader-paged', isPaged);
-    const isPagedFormat = fmt && (fmt.key === 'pdf' || fmt.key === 'cbz');
-    document.getElementById('pdf-zoom-group').style.display = isPagedFormat ? 'flex' : 'none';
-    document.getElementById('zoom-slider-group').style.display = isPagedFormat ? 'flex' : 'none';
+    // Start both zoom controls hidden: they only appear after a successful
+    // open, when updateZoomUI() shows them (presets for PDF, slider for
+    // PDF/CBZ). Failed opens leave them off.
+    document.getElementById('pdf-zoom-group').style.display = 'none';
+    document.getElementById('zoom-slider-group').style.display = 'none';
     rv.classList.remove('reader-entered');
     void rv.offsetWidth; // restart the animation
     rv.classList.add('reader-entered');
+    syncReaderLayout();
   }
 
   function showLibrary() {
     const rv = $('#reader-view');
     rv.classList.add('hidden');
     rv.classList.remove('reader-paged');
+    setMainWide(false);
+    document.body.classList.remove('reader-active');
     $('#pdf-zoom-group').style.display = 'none';
     $('#library-view').classList.remove('hidden');
+    syncReaderLayout();
+  }
+
+  // Desktop-only rail collapse controls. #rail-toggle is hidden by CSS at
+  // <=640px (!important), so its inline display style never shows on mobile;
+  // #rail-expand-float visibility is driven purely by body.rail-collapsed CSS.
+  function initRailToggle() {
+    const DESKTOP = '(min-width: 641px)';
+    const toggle = $('#rail-toggle');
+    const expand = $('#rail-expand-float');
+    if (toggle) {
+      toggle.style.display = window.matchMedia(DESKTOP).matches ? 'flex' : 'none';
+      toggle.addEventListener('click', function () {
+        window.LLLBook.Storage.setRailCollapsed(true);
+        syncRailState();
+      });
+    }
+    if (expand) {
+      expand.addEventListener('click', function () {
+        window.LLLBook.Storage.setRailCollapsed(false);
+        syncRailState();
+      });
+    }
+    const mq = window.matchMedia(DESKTOP);
+    const onMQ = function () {
+      if (toggle) toggle.style.display = mq.matches ? 'flex' : 'none';
+    };
+    if (mq.addEventListener) mq.addEventListener('change', onMQ);
+    else if (mq.addListener) mq.addListener(onMQ);
+  }
+
+  /* ---------------- Reading-card geometry sync (desktop >640px only) ------
+     The right rail is position:fixed, so CSS alone cannot know where the
+     reading card (.reader-content) sits. These helpers measure the card once
+     per animation frame on demand (resize / font-size changes / reader
+     open+close) and:
+        - syncRailPosition(): pins the rail's top/bottom to the card's exact
+          top edge and bottom margin, so the rail spans the same height as the
+          card while staying fixed (never scrolls away). min-height stays 0;
+          the CSS max-height floor (max(200px, ...)) keeps it visible.
+     (The zoom slider used to float over the card's bottom-right corner via
+     syncZoomFloat() and --zoom-float-* vars; it now sits inline in the sticky
+     reader title row, so that geometry sync was removed.)
+     At <=640px the rail pins are cleared so mobile CSS (top bar) rules. */
+  function isDesktopRail() {
+    return window.matchMedia('(min-width: 641px)').matches;
+  }
+
+  function syncRailPosition() {
+    const rail = $('#reader-toolbar');
+    if (!rail) return;
+    if (!isDesktopRail()) {
+      rail.style.top = '';
+      rail.style.bottom = '';
+      return;
+    }
+    // Only meaningful while the reader is on screen.
+    if (document.body.classList.contains('reader-active')) {
+      const content = $('#book-container');
+      if (content) {
+        const rect = content.getBoundingClientRect();
+        // Same 200px floor as the CSS fallback: never shrink to nothing.
+        if (rect.height >= 200) {
+          // Rail top = card's visible top edge; rail bottom = card's visible
+          // bottom edge. Clamping rect against the viewport keeps the rail
+          // aligned whether or not the page scrolls, with no fixed 18px floor
+          // (that floor used to leave an 8px offset when gapBelow was smaller).
+          rail.style.top = Math.max(0, Math.round(rect.top)) + 'px';
+          const visibleBottom = Math.min(window.innerHeight, rect.bottom);
+          const bottom = Math.max(0, Math.round(window.innerHeight - visibleBottom));
+          rail.style.bottom = bottom + 'px';
+        } else {
+          // Card too short: hand top/bottom back to the CSS fallbacks so the
+          // rail never ends up off-screen or floating over nothing.
+          rail.style.top = '';
+          rail.style.bottom = '';
+        }
+      }
+    } else {
+      rail.style.top = '';
+      rail.style.bottom = '';
+    }
+  }
+
+  let layoutSyncRaf = 0;
+  function syncReaderLayout() {
+    if (layoutSyncRaf) cancelAnimationFrame(layoutSyncRaf);
+    layoutSyncRaf = requestAnimationFrame(function () {
+      layoutSyncRaf = 0;
+      syncRailPosition();
+    });
+  }
+
+  function initReaderLayoutSync() {
+    window.addEventListener('resize', syncReaderLayout);
+    // The rail is position:fixed, so any scroll that moves the reading card's
+    // viewport coordinates must re-sync it. capture:true is required to also
+    // catch scrolls inside #book-container (the card itself scrolls
+    // internally), not just document-level scrolling. syncReaderLayout
+    // coalesces via RAF, so scroll bursts run at most once per frame.
+    window.addEventListener('scroll', syncReaderLayout, true);
+    const mq = window.matchMedia('(min-width: 641px)');
+    if (mq.addEventListener) mq.addEventListener('change', syncReaderLayout);
+    else if (mq.addListener) mq.addListener(syncReaderLayout);
+    // Reflow-driven geometry changes (card grows/shrinks, header resizes) do
+    // not fire resize/scroll; observe them when the API exists.
+    if (window.ResizeObserver) {
+      var ro = new ResizeObserver(function () { syncReaderLayout(); });
+      var card = $('#book-container');
+      if (card) ro.observe(card);
+      var header = document.querySelector('.reader-header');
+      if (header) ro.observe(header);
+    }
   }
 
   /* ---------------- Library ---------------- */
@@ -78,9 +216,36 @@
     });
   }
 
+  // Persist real metadata (title/author) discovered by a renderer, but only
+  // when it is non-empty and differs from the file-name-based title. The book
+  // id never changes; setBook merges so lastOpened/stored/etc. are kept.
+  function applySessionMeta(id, session) {
+    if (!session) return;
+    const books = window.LLLBook.Storage.getBooks();
+    const book = books[id];
+    if (!book) return;
+    const patch = {};
+    const metaTitle = session.title ? String(session.title).trim() : '';
+    if (metaTitle && metaTitle !== book.title) patch.title = metaTitle;
+    const metaAuthor = session.author ? String(session.author).trim() : '';
+    if (metaAuthor && metaAuthor !== book.author) patch.author = metaAuthor;
+    if (Object.keys(patch).length) {
+      window.LLLBook.Storage.setBook(id, patch);
+    }
+    // A renderer may hand us a cover image (Blob or dataURL string) via
+    // session.cover. Persist it in IndexedDB (never localStorage) and refresh
+    // the library card once saved. Never let a cover failure break reading.
+    if (session.cover && window.LLLBook.Covers) {
+      window.LLLBook.Covers.save(id, session.cover)
+        .then(function () { renderLibrary(); })
+        .catch(function () {});
+    }
+  }
+
   function renderLibrary() {
     const books = window.LLLBook.Storage.getBooks();
     const list = $('#library-list');
+    revokeCoverUrls(list);
     list.innerHTML = '';
     const entries = Object.keys(books)
       .map(function (key) { return books[key]; })
@@ -110,6 +275,9 @@
         '</div>' +
         '<div class="book-body">' +
           '<div class="book-title">' + title + '</div>' +
+          (b.author
+            ? '<div class="book-author">' + escapeHtml(b.author) + '</div>'
+            : '') +
           '<div class="book-meta">' +
             escapeHtml(window.LLLBook.I18n.t('library.read', { format: fmtLabel, pct: pct })) +
           '</div>' +
@@ -165,7 +333,66 @@
       body.appendChild(footer);
 
       list.appendChild(card);
+      applyCoverToCard(card, b.id);
     });
+  }
+
+  // Revoke every live blob: objectURL held by a cover <img> under `root` and
+  // detach the src, so clearing/re-rendering the library does not leak URLs
+  // and later revokes cannot double-fire on the same URL.
+  function revokeCoverUrls(root) {
+    if (!root || !root.querySelectorAll) return;
+    const imgs = root.querySelectorAll('.book-cover-img');
+    for (let i = 0; i < imgs.length; i++) {
+      const src = imgs[i].getAttribute('src');
+      imgs[i].removeAttribute('src');
+      if (src && src.indexOf('blob:') === 0) {
+        try { URL.revokeObjectURL(src); } catch (e) { /* already revoked */ }
+      }
+    }
+  }
+
+  // Try to show a saved cover on a freshly rendered card. The gradient +
+  // title placeholder stays as the fallback until (and unless) a cover blob
+  // resolves from IndexedDB.
+  function applyCoverToCard(card, id) {
+    if (!window.LLLBook.Covers) return;
+    window.LLLBook.Covers.load(id)
+      .then(function (blob) {
+        if (!blob) return;
+        const cover = card.querySelector('.book-cover');
+        if (!cover || !cover.isConnected) return;
+        // Replace any previous image (and revoke its objectURL) on re-render.
+        const oldImg = cover.querySelector('.book-cover-img');
+        if (oldImg) {
+          const oldSrc = oldImg.getAttribute('src');
+          oldImg.removeAttribute('src');
+          if (oldSrc && oldSrc.indexOf('blob:') === 0) {
+            URL.revokeObjectURL(oldSrc);
+          }
+          oldImg.remove();
+        }
+        const img = document.createElement('img');
+        img.className = 'book-cover-img';
+        img.alt = '';
+        const url = URL.createObjectURL(blob);
+        // Attach the image and the has-cover styling only once it actually
+        // decoded: a broken blob must leave the gradient + title placeholder
+        // untouched instead of overlaying a broken-image icon.
+        img.onload = function () {
+          if (!cover.isConnected) {
+            URL.revokeObjectURL(url);
+            return;
+          }
+          cover.appendChild(img);
+          cover.classList.add('has-cover');
+        };
+        img.onerror = function () {
+          URL.revokeObjectURL(url);
+        };
+        img.src = url;
+      })
+      .catch(function () {});
   }
 
   /* ---------------- Reading / progress ---------------- */
@@ -223,6 +450,11 @@
     const slider = $('#page-slider');
     if (!container || !input || !totalSpan || !slider) return;
 
+    // The read-only progress label duplicates the editable position control
+    // (page input / slider) whenever #page-jump is shown, so hide it here and
+    // restore it when #page-jump goes away.
+    const progressLabel = $('#progress-label');
+
     // Attach listeners once (shared across all formats)
     if (!input._pageJumpWired) {
       input._pageJumpWired = true;
@@ -240,6 +472,7 @@
         if (currentPageJump && currentPageJump.type !== 'slider') return;
         const v = parseInt(slider.value, 10);
         if (isNaN(v)) return;
+        slider.style.setProperty('--fill', v + '%');
         currentSession.goTo({ ratio: v / 100 }).then(function () {
           saveProgress(); updateProgressLabel(); updateBookmarkButton();
         }).catch(function () {});
@@ -248,12 +481,14 @@
 
     if (!session) {
       container.style.display = 'none';
+      if (progressLabel) progressLabel.classList.remove('hide-progress');
       return;
     }
 
     // Page-based formats (PDF, Comic)
     if (typeof session.numPages === 'number' && session.numPages > 0) {
       container.style.display = 'flex';
+      if (progressLabel) progressLabel.classList.add('hide-progress');
       input.style.display = 'inline-block';
       slider.style.display = 'none';
       totalSpan.textContent = session.numPages;
@@ -268,6 +503,7 @@
 
     // Scroll-based formats (Text, FB2)
     container.style.display = 'flex';
+    if (progressLabel) progressLabel.classList.add('hide-progress');
     input.style.display = 'none';
     slider.style.display = 'inline-block';
     totalSpan.textContent = '';
@@ -301,6 +537,8 @@
     } else if (loc && typeof loc.percentage === 'number') {
       slider.value = Math.round(loc.percentage * 100);
     }
+    // keep the rail progress bar's --fill in sync with the real value
+    slider.style.setProperty('--fill', (parseInt(slider.value, 10) || 0) + '%');
   }
 
   function goToPage(input, slider) {
@@ -377,17 +615,29 @@
   function updateZoomUI() {
     const slider = document.getElementById('zoom-slider');
     const percent = document.getElementById('zoom-percentage');
+    const presetGroup = document.getElementById('pdf-zoom-group');
+    const sliderGroup = document.getElementById('zoom-slider-group');
     const format = currentSession ? currentSession.format : '';
+
+    // Presets are PDF-only; the slider works for PDF and CBZ. Both only show
+    // after a successful open (currentSession set), never on a failed one.
+    const hasPresets = !!(currentSession && typeof currentSession.setZoomMode === 'function');
+    if (presetGroup) {
+      presetGroup.style.display = (format === 'pdf' && hasPresets) ? 'flex' : 'none';
+    }
 
     if (format === 'pdf' || format === 'cbz') {
       const level = currentSession.zoomLevel || 1.0;
       const percentValue = Math.round(level * 100);
       if (slider) slider.value = percentValue;
       if (percent) percent.textContent = percentValue + '%';
-      document.getElementById('zoom-slider-group').style.display = 'flex';
+      if (sliderGroup) sliderGroup.style.display = 'flex';
     } else {
-      document.getElementById('zoom-slider-group').style.display = 'none';
+      if (sliderGroup) sliderGroup.style.display = 'none';
     }
+
+    // Keep preset is-active in sync with the real zoomMode on every path.
+    updateZoomButtons();
   }
 
   function applySavedFontSize() {
@@ -396,13 +646,31 @@
     if (currentSession && typeof currentSession.setFontSize === 'function') {
       currentSession.setFontSize(size);
     }
+    syncReaderLayout();
   }
 
-  function toggleTheme() {
-    const root = document.documentElement;
-    const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-    root.setAttribute('data-theme', next);
-    window.LLLBook.Storage.setTheme(next);
+  const THEME_NAMES = ['light', 'sepia', 'dark'];
+
+  function setTheme(name) {
+    if (THEME_NAMES.indexOf(name) === -1) name = 'light';
+    document.documentElement.setAttribute('data-theme', name);
+    window.LLLBook.Storage.setTheme(name);
+    updateThemeButtons(name);
+  }
+
+  function updateThemeButtons(active) {
+    const buttons = [
+      ['#theme-light', 'light'],
+      ['#theme-sepia', 'sepia'],
+      ['#theme-dark', 'dark']
+    ];
+    buttons.forEach(function (pair) {
+      const btn = $(pair[0]);
+      if (!btn) return;
+      const on = pair[1] === active;
+      btn.classList.toggle('is-active', on);
+      btn.setAttribute('aria-checked', on ? 'true' : 'false');
+    });
   }
 
   function toggleBookmark() {
@@ -586,8 +854,113 @@
     $('#toc-panel').classList.toggle('open');
   }
 
+  /* ---------------- Side-panel accordion (TOC / Bookmarks / Search) ------- */
+
+  // One section open at a time. The header's aria-expanded and the body's
+  // hidden attribute are kept in sync; clicking an already-open header keeps it
+  // open (always exactly one section stays expanded).
+  function setAccSection(header, open) {
+    const body = document.getElementById(header.getAttribute('aria-controls'));
+    header.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (!body) return;
+    if (open) body.removeAttribute('hidden');
+    else body.setAttribute('hidden', '');
+  }
+
+  function openAccSectionByName(name) {
+    const headers = document.querySelectorAll('.panel-acc-header');
+    headers.forEach(function (header) {
+      setAccSection(header, header.parentElement.getAttribute('data-acc') === name);
+    });
+  }
+
+  function initAccordion() {
+    const headers = document.querySelectorAll('.panel-acc-header');
+    headers.forEach(function (header) {
+      header.addEventListener('click', function () {
+        const isOpen = header.getAttribute('aria-expanded') === 'true';
+        setAccSection(header, true); // always-one-open: re-click keeps it open
+        if (isOpen) return;
+        headers.forEach(function (other) {
+          if (other !== header) setAccSection(other, false);
+        });
+      });
+    });
+  }
+
+  /* ---------------- Search within the book ---------------- */
+
+  // Reset the search box + results and drop any highlights from the current
+  // session. Called when a new book opens, the reader closes, or the user
+  // clears/escapes the field — so marks never leak into another book's DOM.
+  function resetSearchUI() {
+    const input = $('#search-input');
+    if (input) input.value = '';
+    const results = $('#search-results');
+    if (results) results.innerHTML = '';
+    if (currentSession && typeof currentSession.clearSearch === 'function') {
+      currentSession.clearSearch();
+    }
+  }
+
+  function renderSearchResults(results, hits) {
+    results.innerHTML = '';
+    const countEl = document.createElement('div');
+    countEl.className = 'search-count';
+    countEl.textContent = window.LLLBook.I18n.t('search.count', { n: hits.length });
+    results.appendChild(countEl);
+
+    hits.forEach(function (hit) {
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'search-item';
+      // Raw snippet text via textContent — never injected as HTML.
+      row.textContent = hit.snippet;
+      row.addEventListener('click', function () {
+        if (!currentSession || typeof currentSession.goTo !== 'function') return;
+        currentSession.goTo({ anchor: hit.id }).then(function () {
+          saveProgress();
+          updateProgressLabel();
+          updateBookmarkButton();
+        });
+      });
+      results.appendChild(row);
+    });
+  }
+
+  function runSearch() {
+    const input = $('#search-input');
+    const results = $('#search-results');
+    if (!input || !results) return;
+    openAccSectionByName('search'); // make sure results are visible
+    const query = (input.value || '').trim();
+    if (!query) { results.innerHTML = ''; return; }
+    // Only the open, text-based books expose search(). EPUB/PDF/CBZ do not.
+    if (!currentSession || typeof currentSession.search !== 'function') {
+      results.innerHTML =
+        '<p class="empty">' + window.LLLBook.I18n.t('search.unsupported') + '</p>';
+      return;
+    }
+    Promise.resolve(currentSession.search(query))
+      .then(function (hits) {
+        if (!hits || !hits.length) {
+          results.innerHTML =
+            '<p class="empty">' + window.LLLBook.I18n.t('search.no_results') + '</p>';
+          return;
+        }
+        renderSearchResults(results, hits);
+      })
+      .catch(function () {
+        results.innerHTML =
+          '<p class="empty">' + window.LLLBook.I18n.t('search.no_results') + '</p>';
+      });
+  }
+
   function closeReader() {
     saveProgress();
+    if (currentSession && typeof currentSession.clearSearch === 'function') {
+      currentSession.clearSearch();
+    }
     if (currentSession && typeof currentSession.destroy === 'function') {
       currentSession.destroy();
     }
@@ -610,10 +983,16 @@
 
   /* ---------------- Open / upload ---------------- */
 
-  function openBook(file) {
+  // Register + persist a picked file in the library without opening it.
+  function addBookToList(file) {
     const id = bookIdFor(file);
     registerBook(file);
     tryStore(file, id);
+    return id;
+  }
+
+  function openBook(file) {
+    const id = addBookToList(file);
     renderFromFile(file, id);
   }
 
@@ -652,21 +1031,30 @@
   }
 
   function renderFromFile(file, id) {
+    resetSearchUI(); // clear the search box/results and any prior highlights
     if (currentSession && typeof currentSession.destroy === 'function') {
     currentSession.destroy();
     currentSession = null;
     }
     const fmt = window.LLLBook.FileLoader.detectFormat(file);
-    showReader(file.name, fmt);
+    // Prefer the stored real title (metadata from a previous open) over the
+    // file name for the reader header.
+    const storedBook = window.LLLBook.Storage.getBook(id);
+    showReader((storedBook && storedBook.title) || file.name, fmt);
     const container = $('#book-container');
     container.innerHTML =
       '<div class="loading">' + window.LLLBook.I18n.t('reader.loading') + '</div>';
     const saved = window.LLLBook.Storage.getProgress(id);
+    // True only once this call's dispatch resolves. Distinguishes a genuine
+    // open failure from a later throw (e.g. progress restore) in the catch.
+    let dispatched = false;
 
     window.LLLBook.FileLoader.dispatch(file, container, { saved: saved })
       .then(function (session) {
+        dispatched = true;
         currentSession = session;
         currentBookId = id;
+        applySessionMeta(id, session);
         applySavedFontSize();
         if (saved && saved.loc && typeof session.goTo === 'function') {
           return session.goTo(saved.loc);
@@ -680,14 +1068,8 @@
         renderToc(currentSession);
         renderPageJump(currentSession);
         renderLibrary();
-        // Show zoom controls only for PDF
-        const zoomGroup = $('#pdf-zoom-group');
-        if (currentSession && currentSession.format === 'pdf') {
-          zoomGroup.style.display = 'flex';
-          updateZoomButtons();
-        } else {
-          zoomGroup.style.display = 'none';
-        }
+        // Zoom controls (presets for PDF, slider for PDF/CBZ) are shown here,
+        // only after a successful open, in one place.
         updateZoomUI();
         updateButtonLabels();
       })
@@ -703,7 +1085,32 @@
           '<div class="notice">' +
           window.LLLBook.I18n.t('reader.cannot_open') +
           escapeHtml(reason) + '</div>';
+        // Opening failed: make sure neither the preset group nor the floating
+        // zoom slider lingers over the error notice (showReader already inits
+        // both hidden; this also covers a failure after a previous successful
+        // PDF/CBZ session).
+        document.getElementById('pdf-zoom-group').style.display = 'none';
+        document.getElementById('zoom-slider-group').style.display = 'none';
+        // A failed open never reaches renderPageJump, so reset the page-jump
+        // controls (and the progress label's hide flag) here as well.
+        renderPageJump(null);
+        // Only drop the book when opening itself failed (dispatch never
+        // resolved). If it opened but a later step threw — e.g. restoring the
+        // saved position via goTo — the book is fine, so keep it in the library.
+        if (!dispatched) removeFailedBook(id);
       });
+  }
+
+  // Purge a book that failed to open: record, progress, bookmarks, stored copy.
+  function removeFailedBook(id) {
+    if (window.LLLBook.StoredBooks) {
+      window.LLLBook.StoredBooks.remove(id).catch(function () {});
+    }
+    if (window.LLLBook.Covers) {
+      window.LLLBook.Covers.remove(id).catch(function () {});
+    }
+    window.LLLBook.Storage.deleteBook(id);
+    renderLibrary();
   }
 
   // Reopen a previously stored book from the Library, no re-upload needed.
@@ -753,14 +1160,77 @@
     if (window.LLLBook.StoredBooks) {
       window.LLLBook.StoredBooks.remove(book.id).catch(function () {});
     }
+    if (window.LLLBook.Covers) {
+      window.LLLBook.Covers.remove(book.id).catch(function () {});
+    }
     window.LLLBook.Storage.deleteBook(book.id);
     renderLibrary();
   }
 
   function onFiles(e) {
     const files = Array.from(e.target.files || []);
-    if (files.length) openBook(files[0]);
+    registerAndOpenFiles(files);
     e.target.value = '';
+  }
+
+  // Shared by the file picker and drag&drop: register every picked file,
+  // then open only the first one in the reader.
+  function registerAndOpenFiles(files) {
+    if (files.length) {
+      files.forEach(addBookToList);
+      openBook(files[0]);
+    }
+  }
+
+  /* ---------------- Drag & drop ---------------- */
+
+  let dragDepth = 0; // enter/leave counter: the overlay hides only at 0
+
+  function isFileDrag(e) {
+    if (!e.dataTransfer) return false;
+    const types = Array.from(e.dataTransfer.types || []);
+    return types.indexOf('Files') !== -1;
+  }
+
+  function showDropOverlay() {
+    const overlay = $('#drop-overlay');
+    if (overlay) overlay.classList.add('visible');
+  }
+
+  function hideDropOverlay() {
+    dragDepth = 0;
+    const overlay = $('#drop-overlay');
+    if (overlay) overlay.classList.remove('visible');
+  }
+
+  function onDragEnter(e) {
+    if (!isFileDrag(e)) return;
+    e.preventDefault();
+    dragDepth++;
+    showDropOverlay();
+  }
+
+  function onDragOver(e) {
+    if (!isFileDrag(e)) return;
+    // Without preventDefault the browser opens dropped files in a new tab.
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    showDropOverlay();
+  }
+
+  function onDragLeave(e) {
+    if (!isFileDrag(e)) return;
+    // Fires on every child element crossed; only the last leave hides it.
+    dragDepth--;
+    if (dragDepth <= 0) hideDropOverlay();
+  }
+
+  function onDrop(e) {
+    e.preventDefault();
+    hideDropOverlay();
+    if (!isFileDrag(e)) return;
+    const files = Array.from((e.dataTransfer && e.dataTransfer.files) || []);
+    registerAndOpenFiles(files);
   }
 
   /* ---------------- Keyboard ---------------- */
@@ -796,10 +1266,7 @@
 
   function applySavedTheme() {
     const theme = window.LLLBook.Storage.getTheme();
-    document.documentElement.setAttribute(
-      'data-theme',
-      theme === 'dark' ? 'dark' : 'light'
-    );
+    setTheme(THEME_NAMES.indexOf(theme) !== -1 ? theme : 'light');
   }
 
   function updateButtonLabels() {
@@ -842,24 +1309,48 @@
     $('#close-btn').addEventListener('click', closeReader);
     $('#prev-btn').addEventListener('click', function () { step(-1); });
     $('#next-btn').addEventListener('click', function () { step(1); });
+    // mobile bottom bar: reuse the shared step() — no new page-turn logic
+    const prevBtnBottom = $('#prev-btn-bottom');
+    const nextBtnBottom = $('#next-btn-bottom');
+    if (prevBtnBottom) prevBtnBottom.addEventListener('click', function () { step(-1); });
+    if (nextBtnBottom) nextBtnBottom.addEventListener('click', function () { step(1); });
     $('#font-minus').addEventListener('click', function () { adjustFont(-1); });
     $('#font-plus').addEventListener('click', function () { adjustFont(1); });
-    $('#theme-toggle').addEventListener('click', toggleTheme);
+    $('#theme-light').addEventListener('click', function () { setTheme('light'); });
+    $('#theme-sepia').addEventListener('click', function () { setTheme('sepia'); });
+    $('#theme-dark').addEventListener('click', function () { setTheme('dark'); });
     $('#bookmark-btn').addEventListener('click', toggleBookmark);
     $('#toc-toggle').addEventListener('click', toggleToc);
+    initAccordion();
+    initRailToggle();
+    initReaderLayoutSync();
+
+    const searchInput = $('#search-input');
+    const searchBtn = $('#search-btn');
+    if (searchBtn) searchBtn.addEventListener('click', runSearch);
+    if (searchInput) {
+      searchInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); runSearch(); }
+        else if (e.key === 'Escape') { resetSearchUI(); }
+      });
+      // Clearing the field by any means (backspace, clear button) drops marks.
+      searchInput.addEventListener('input', function () {
+        if (!(searchInput.value || '').trim()) resetSearchUI();
+      });
+    }
     $('#zoom-fit-page').addEventListener('click', function () {
       if (currentSession && typeof currentSession.setZoomMode === 'function') {
-        currentSession.setZoomMode('fit-page').then(updateZoomButtons);
+        currentSession.setZoomMode('fit-page').then(updateZoomUI);
       }
     });
     $('#zoom-fit-width').addEventListener('click', function () {
       if (currentSession && typeof currentSession.setZoomMode === 'function') {
-        currentSession.setZoomMode('fit-width').then(updateZoomButtons);
+        currentSession.setZoomMode('fit-width').then(updateZoomUI);
       }
     });
     $('#zoom-100').addEventListener('click', function () {
       if (currentSession && typeof currentSession.setZoomMode === 'function') {
-        currentSession.setZoomMode('original').then(updateZoomButtons);
+        currentSession.setZoomMode('original').then(updateZoomUI);
       }
     });
     const zoomSlider = document.getElementById('zoom-slider');
@@ -868,11 +1359,18 @@
         if (currentSession && typeof currentSession.setZoomLevel === 'function') {
           const level = parseInt(e.target.value) / 100;
           currentSession.setZoomLevel(level);
-          document.getElementById('zoom-percentage').textContent = e.target.value + '%';
+          // Reflect the real (clamped) level and sync presets, not the raw input.
+          updateZoomUI();
         }
       });
     }
     document.addEventListener('keydown', onKeydown);
+
+    // Accept book files dropped anywhere on the page.
+    document.addEventListener('dragenter', onDragEnter);
+    document.addEventListener('dragover', onDragOver);
+    document.addEventListener('dragleave', onDragLeave);
+    document.addEventListener('drop', onDrop);
 
     // EPUB relocated event for page/slider updates
     document.addEventListener('epub-relocated', function () {
