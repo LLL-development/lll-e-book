@@ -11,10 +11,10 @@
   const BOOKS_KEY = NS + 'books';
   const PROGRESS_PREFIX = NS + 'progress.';
   const BOOKMARK_PREFIX = NS + 'bookmarks.';
+  const HIGHLIGHT_PREFIX = NS + 'highlights.';
   const THEME_KEY = NS + 'theme';
   const LANG_KEY = NS + 'lang';
   const FONT_KEY = NS + 'fontsize';
-  const RAIL_COLLAPSED_KEY = NS + 'railCollapsed';
 
   function read(key, fallback) {
     try {
@@ -73,7 +73,18 @@
       write(BOOKMARK_PREFIX + id, list);
     },
 
-    /* ---- delete a book's record, progress and bookmarks ---- */
+    /* ---- highlights (marker pen) ----
+       One highlight: { id, color, text, created, anchor }
+       anchor is format-dependent (TXT/FB2: {type:'dom',...}, EPUB: {type:'cfi', cfi}).
+       Storage does not interpret the contents; it just stores the array as-is. */
+    getHighlights(id) {
+      return read(HIGHLIGHT_PREFIX + id, []);
+    },
+    setHighlights(id, list) {
+      write(HIGHLIGHT_PREFIX + id, list);
+    },
+
+    /* ---- delete a book's record, progress, bookmarks and highlights ---- */
     deleteBook(id) {
       const books = this.getBooks();
       if (books[id]) {
@@ -82,6 +93,7 @@
       }
       try { localStorage.removeItem(PROGRESS_PREFIX + id); } catch (e) {}
       try { localStorage.removeItem(BOOKMARK_PREFIX + id); } catch (e) {}
+      try { localStorage.removeItem(HIGHLIGHT_PREFIX + id); } catch (e) {}
     },
 
     /* ---- theme preference ---- */
@@ -106,14 +118,6 @@
     },
     setFontSize(size) {
       write(FONT_KEY, size);
-    },
-
-    /* ---- reader toolbar rail collapsed state (desktop side rail) ---- */
-    getRailCollapsed() {
-      return read(RAIL_COLLAPSED_KEY, false);
-    },
-    setRailCollapsed(collapsed) {
-      write(RAIL_COLLAPSED_KEY, !!collapsed);
     },
   };
 

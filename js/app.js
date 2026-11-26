@@ -12,6 +12,44 @@
   let currentSession = null;
   let currentBookId = null;
   let currentPageJump = null; // { type: 'page' | 'slider', total: number }
+  let pendingHighlight = null; // { anchor, text } 選択されたが未確定の候補
+
+  // Library view state: search query, sort key, format filter. Persisted to
+  // localStorage so the user's filters survive a reload.
+  const LIB_STATE_KEY = 'lll.library.view';
+  let libSearch = '';
+  let libSort = 'recent';   // recent | title | author | progress
+  let libFormat = 'all';
+
+  function loadLibState() {
+    try {
+      const raw = localStorage.getItem(LIB_STATE_KEY);
+      if (!raw) return;
+      const s = JSON.parse(raw);
+      if (!s || typeof s !== 'object') return;
+      if (typeof s.search === 'string') libSearch = s.search;
+      if (s.sort === 'title' || s.sort === 'author' || s.sort === 'progress' || s.sort === 'recent') {
+        libSort = s.sort;
+      }
+      if (s.format === 'all' || s.format === 'pdf' || s.format === 'epub' || s.format === 'txt' || s.format === 'fb2') {
+        libFormat = s.format;
+      }
+    } catch (e) {
+      /* corrupt or unavailable — keep defaults */
+    }
+  }
+
+  function saveLibState() {
+    try {
+      localStorage.setItem(LIB_STATE_KEY, JSON.stringify({
+        search: libSearch,
+        sort: libSort,
+        format: libFormat,
+      }));
+    } catch (e) {
+      /* Storage full or unavailable — fail silently. */
+    }
+  }
 
   function bookIdFor(file) {
     return file.name + '|' + (file.size || 0) + '|' + (file.lastModified || 0);
@@ -41,33 +79,31 @@
     }, 4000);
   }
 
+  // Diagnostic sink for the marker-pen highlight pipeline. Console-only: the
+  // highlight bug it was added to chase is fixed, so these internal [HL-DBG]
+  // messages must no longer surface as user-facing toasts.
+  window.LLLBook = window.LLLBook || {};
+  window.LLLBook.hlDbg = function (msg) {
+    try { console.warn(msg); } catch (e) {}
+  };
+
   /* ---------------- Views ---------------- */
 
-  // Reader-only layout helpers: widen <main> and sync the side-rail collapse
-  // state (desktop rail is CSS-only via .rail-collapsed on #reader-view).
+  // Reader-only layout helper: widen <main> for the reader view.
   function setMainWide(on) {
     const m = document.querySelector('main');
     if (m) m.classList.toggle('reader-wide', !!on);
   }
 
-  function syncRailState() {
-    const rv = $('#reader-view');
-    if (!rv) return;
-    const collapsed = window.LLLBook.Storage.getRailCollapsed();
-    rv.classList.toggle('rail-collapsed', !!collapsed);
-    document.body.classList.toggle('rail-collapsed', !!collapsed);
-    const toggle = $('#rail-toggle');
-    if (toggle) toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-  }
-
   function showReader(title, fmt) {
     $('#book-title').textContent = title;
+    const hbt = $('#header-book-title');
+    if (hbt) hbt.textContent = title;
     $('#library-view').classList.add('hidden');
     document.body.classList.add('reader-active');
     const rv = $('#reader-view');
     rv.classList.remove('hidden');
     setMainWide(true);
-    syncRailState();
     const isPaged = fmt && (fmt.key === 'pdf' || fmt.key === 'cbz');
     rv.classList.toggle('reader-paged', isPaged);
     // Start both zoom controls hidden: they only appear after a successful
@@ -92,34 +128,6 @@
     syncReaderLayout();
   }
 
-  // Desktop-only rail collapse controls. #rail-toggle is hidden by CSS at
-  // <=640px (!important), so its inline display style never shows on mobile;
-  // #rail-expand-float visibility is driven purely by body.rail-collapsed CSS.
-  function initRailToggle() {
-    const DESKTOP = '(min-width: 641px)';
-    const toggle = $('#rail-toggle');
-    const expand = $('#rail-expand-float');
-    if (toggle) {
-      toggle.style.display = window.matchMedia(DESKTOP).matches ? 'flex' : 'none';
-      toggle.addEventListener('click', function () {
-        window.LLLBook.Storage.setRailCollapsed(true);
-        syncRailState();
-      });
-    }
-    if (expand) {
-      expand.addEventListener('click', function () {
-        window.LLLBook.Storage.setRailCollapsed(false);
-        syncRailState();
-      });
-    }
-    const mq = window.matchMedia(DESKTOP);
-    const onMQ = function () {
-      if (toggle) toggle.style.display = mq.matches ? 'flex' : 'none';
-    };
-    if (mq.addEventListener) mq.addEventListener('change', onMQ);
-    else if (mq.addListener) mq.addListener(onMQ);
-  }
-
   /* ---------------- Reading-card geometry sync (desktop >640px only) ------
      The right rail is position:fixed, so CSS alone cannot know where the
      reading card (.reader-content) sits. These helpers measure the card once
@@ -130,8 +138,9 @@
           card while staying fixed (never scrolls away). min-height stays 0;
           the CSS max-height floor (max(200px, ...)) keeps it visible.
      (The zoom slider used to float over the card's bottom-right corner via
-     syncZoomFloat() and --zoom-float-* vars; it now sits inline in the sticky
-     reader title row, so that geometry sync was removed.)
+     syncZoomFloat() and --zoom-float-* vars; it now sits in the reader
+     toolbar (.reader-toolbar, after .toolbar-nav), so that geometry sync was
+     removed.)
      At <=640px the rail pins are cleared so mobile CSS (top bar) rules. */
   function isDesktopRail() {
     return window.matchMedia('(min-width: 641px)').matches;
@@ -227,6 +236,12 @@
     const patch = {};
     const metaTitle = session.title ? String(session.title).trim() : '';
     if (metaTitle && metaTitle !== book.title) patch.title = metaTitle;
+    if (metaTitle && currentSession === session && currentBookId === id) {
+      const bt = $('#book-title');
+      if (bt) bt.textContent = metaTitle;
+      const ht = $('#header-book-title');
+      if (ht) ht.textContent = metaTitle;
+    }
     const metaAuthor = session.author ? String(session.author).trim() : '';
     if (metaAuthor && metaAuthor !== book.author) patch.author = metaAuthor;
     if (Object.keys(patch).length) {
@@ -240,6 +255,15 @@
         .then(function () { renderLibrary(); })
         .catch(function () {});
     }
+    // Some renderers (PDF) resolve the session before the cover is ready and
+    // hand it over later via onCover. Save and refresh then too.
+    session.onCover = function (dataUrl) {
+      if (dataUrl && window.LLLBook.Covers) {
+        window.LLLBook.Covers.save(id, dataUrl)
+          .then(function () { renderLibrary(); })
+          .catch(function () {});
+      }
+    };
   }
 
   function renderLibrary() {
@@ -247,13 +271,36 @@
     const list = $('#library-list');
     revokeCoverUrls(list);
     list.innerHTML = '';
-    const entries = Object.keys(books)
-      .map(function (key) { return books[key]; })
-      .sort(function (a, b) { return (b.lastOpened || 0) - (a.lastOpened || 0); });
+    let entries = Object.keys(books).map(function (key) { return books[key]; });
+
+    // format filter
+    if (libFormat !== 'all') {
+      entries = entries.filter(function (b) { return (b.format || '') === libFormat; });
+    }
+    // search filter (title + author, case-insensitive)
+    if (libSearch) {
+      const q = libSearch.toLowerCase();
+      entries = entries.filter(function (b) {
+        return (b.title || '').toLowerCase().indexOf(q) !== -1 ||
+               (b.author || '').toLowerCase().indexOf(q) !== -1;
+      });
+    }
+    // sort
+    entries.sort(function (a, b) {
+      if (libSort === 'title') return (a.title || '').localeCompare(b.title || '');
+      if (libSort === 'author') return (a.author || '').localeCompare(b.author || '');
+      if (libSort === 'progress') {
+        const pa = (window.LLLBook.Storage.getProgress(a.id) || {}).percent || 0;
+        const pb = (window.LLLBook.Storage.getProgress(b.id) || {}).percent || 0;
+        return pb - pa;
+      }
+      return (b.lastOpened || 0) - (a.lastOpened || 0); // recent
+    });
 
     if (!entries.length) {
       list.innerHTML =
-        '<div class="empty">' + window.LLLBook.I18n.t('library.empty') + '</div>';
+        '<div class="empty">' + window.LLLBook.I18n.t(
+          Object.keys(books).length ? 'library.no_match' : 'library.empty') + '</div>';
       return;
     }
 
@@ -285,12 +332,17 @@
           pct + '%"></span></div>' +
         '</div>';
       card.addEventListener('click', function () {
-        reopenStoredBook(b);
+        if (b.too_big && !b.stored) {
+          repickForTooBig(b);
+        } else {
+          reopenStoredBook(b);
+        }
       });
 
       const body = card.querySelector('.book-body');
 
-      if (b.too_big) {
+      // stored を除外: 保存済みなら too_big は矛盾フラグ（古い残存）なので案内しない（クリックハンドラ app.js:326 と揃える）
+      if (b.too_big && !b.stored) {
         const note = document.createElement('div');
         note.className = 'book-note';
         note.textContent = window.LLLBook.I18n.t('reader.too_big');
@@ -803,6 +855,166 @@
     });
   }
 
+  /* ---------------- Highlights (marker pen: EPUB + TXT/HTML/RTF/FB2) ---------------- */
+
+  function highlightsForCurrentBook() {
+    if (!currentBookId) return [];
+    return window.LLLBook.Storage.getHighlights(currentBookId);
+  }
+
+  // Renderer contract: the renderer builds an opaque anchor object (EPUB:
+  // {type:'cfi', cfi}; TXT/FB2: {type:'dom', text, before, after}) and app.js
+  // passes it through without interpreting its contents. Sessions that lack
+  // applyHighlights / addHighlight / jumpToHighlight (PDF/CBZ) keep the button
+  // disabled and never get an onSelect handler.
+  function sessionSupportsHighlights() {
+    return !!(
+      currentSession &&
+      typeof currentSession.applyHighlights === 'function' &&
+      typeof currentSession.addHighlight === 'function' &&
+      typeof currentSession.jumpToHighlight === 'function'
+    );
+  }
+
+  function updateHighlightButton() {
+    const btn = $('#highlight-btn');
+    if (!btn) return;
+    const active = !!(pendingHighlight && sessionSupportsHighlights());
+    btn.disabled = !active;
+    btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+  }
+
+  function setupHighlights() {
+    pendingHighlight = null;
+    if (sessionSupportsHighlights()) {
+      currentSession.onSelect = function (anchor, text) {
+        pendingHighlight = { anchor: anchor, text: text || '' };
+        updateHighlightButton();
+      };
+      try {
+        currentSession.applyHighlights(highlightsForCurrentBook());
+      } catch (e) {
+        /* renderer hiccup — don't block reading */
+      }
+    }
+    renderHighlights();
+    updateHighlightButton();
+  }
+
+  function addHighlight() {
+    if (!pendingHighlight || !sessionSupportsHighlights()) return;
+    if (!currentBookId) return;
+    const anchor = pendingHighlight.anchor;
+    const text = pendingHighlight.text;
+    const list = highlightsForCurrentBook();
+    const dup = list.some(function (h) {
+      return h && h.anchor && JSON.stringify(h.anchor) === JSON.stringify(anchor);
+    });
+    if (!dup) {
+      list.push({
+        id: 'hl-' + Date.now() + '-' + Math.random().toString(36).slice(2),
+        color: 'yellow',
+        text: text,
+        created: Date.now(),
+        anchor: anchor,
+      });
+      window.LLLBook.Storage.setHighlights(currentBookId, list);
+    }
+    try {
+      currentSession.addHighlight(anchor);
+    } catch (e) {
+      /* renderer hiccup — don't block reading */
+    }
+    pendingHighlight = null;
+    updateHighlightButton();
+    renderHighlights();
+    openAccSectionByName('highlights');
+  }
+
+  function removeHighlight(id) {
+    if (!currentBookId) return;
+    const all = highlightsForCurrentBook();
+    const h = all.find(function (x) {
+      return x && x.id === id;
+    });
+    const list = all.filter(function (x) {
+      return !x || x.id !== id;
+    });
+    window.LLLBook.Storage.setHighlights(currentBookId, list);
+    if (
+      h &&
+      h.anchor &&
+      currentSession &&
+      typeof currentSession.removeHighlight === 'function'
+    ) {
+      try {
+        currentSession.removeHighlight(h.anchor);
+      } catch (e) {
+        /* renderer hiccup — don't block reading */
+      }
+    }
+    renderHighlights();
+  }
+
+  function highlightLabel(h, index) {
+    const text = (h && h.text) || '';
+    if (text) return text.length > 60 ? text.slice(0, 60) + '\u2026' : text;
+    return window.LLLBook.I18n.t('highlights.label', { n: index + 1 });
+  }
+
+  function renderHighlights() {
+    const panel = $('#highlight-list');
+    if (!panel) return;
+    const highlights = highlightsForCurrentBook();
+
+    if (!highlights.length) {
+      panel.innerHTML =
+        '<p class="empty" style="font-size:13px">' +
+        window.LLLBook.I18n.t('highlights.empty') + '</p>';
+      return;
+    }
+
+    panel.innerHTML = '';
+    highlights.forEach(function (h, i) {
+      if (!h) return;
+      const row = document.createElement('div');
+      row.className = 'bookmark-item highlight-item';
+
+      const label = document.createElement('button');
+      label.type = 'button';
+      label.className = 'bookmark-label';
+      label.title = window.LLLBook.I18n.t('highlights.jump');
+      label.textContent = highlightLabel(h, i);
+      label.addEventListener('click', function () {
+        if (
+          h.anchor &&
+          currentSession &&
+          typeof currentSession.jumpToHighlight === 'function'
+        ) {
+          currentSession.jumpToHighlight(h.anchor).then(function () {
+            saveProgress();
+            updateProgressLabel();
+            updateBookmarkButton();
+          });
+        }
+      });
+
+      const rem = document.createElement('button');
+      rem.type = 'button';
+      rem.className = 'bookmark-remove';
+      rem.title = window.LLLBook.I18n.t('highlights.remove');
+      rem.setAttribute('aria-label', window.LLLBook.I18n.t('highlights.remove'));
+      rem.textContent = '\u2715';
+      rem.addEventListener('click', function () {
+        removeHighlight(h.id);
+      });
+
+      row.appendChild(label);
+      row.appendChild(rem);
+      panel.appendChild(row);
+    });
+  }
+
   function renderToc(session) {
     const list = $('#toc-list');
     if (!list) return;
@@ -856,9 +1068,9 @@
 
   /* ---------------- Side-panel accordion (TOC / Bookmarks / Search) ------- */
 
-  // One section open at a time. The header's aria-expanded and the body's
-  // hidden attribute are kept in sync; clicking an already-open header keeps it
-  // open (always exactly one section stays expanded).
+  // At most one section open at a time. The header's aria-expanded and the
+  // body's hidden attribute are kept in sync; clicking an already-open header
+  // closes it (all sections may end up collapsed).
   function setAccSection(header, open) {
     const body = document.getElementById(header.getAttribute('aria-controls'));
     header.setAttribute('aria-expanded', open ? 'true' : 'false');
@@ -879,8 +1091,11 @@
     headers.forEach(function (header) {
       header.addEventListener('click', function () {
         const isOpen = header.getAttribute('aria-expanded') === 'true';
-        setAccSection(header, true); // always-one-open: re-click keeps it open
-        if (isOpen) return;
+        if (isOpen) {
+          setAccSection(header, false); // toggle: re-click closes it
+          return;
+        }
+        setAccSection(header, true);
         headers.forEach(function (other) {
           if (other !== header) setAccSection(other, false);
         });
@@ -918,7 +1133,10 @@
       row.textContent = hit.snippet;
       row.addEventListener('click', function () {
         if (!currentSession || typeof currentSession.goTo !== 'function') return;
-        currentSession.goTo({ anchor: hit.id }).then(function () {
+        // Sessions that understand a location object (PDF: {page}) provide it as
+        // hit.loc; text-based sessions (TXT/FB2) fall back to the anchor id.
+        var target = hit.loc || { anchor: hit.id };
+        currentSession.goTo(target).then(function () {
           saveProgress();
           updateProgressLabel();
           updateBookmarkButton();
@@ -943,6 +1161,11 @@
     }
     Promise.resolve(currentSession.search(query))
       .then(function (hits) {
+        // Canvas-rendered sessions (PDF) highlight matches on the page body.
+        // Highlight even with zero hits: the query still marks partial pages.
+        if (typeof currentSession.highlightMatches === 'function') {
+          currentSession.highlightMatches(query);
+        }
         if (!hits || !hits.length) {
           results.innerHTML =
             '<p class="empty">' + window.LLLBook.I18n.t('search.no_results') + '</p>';
@@ -974,11 +1197,13 @@
     currentSession = null;
     currentBookId = null;
     currentPageJump = null;
+    pendingHighlight = null;
     document.getElementById('zoom-slider-group').style.display = 'none';
     $('#toc-panel').classList.remove('open');
     showLibrary();
     renderLibrary();
     updateButtonLabels();
+    updateHighlightButton();
   }
 
   /* ---------------- Open / upload ---------------- */
@@ -1016,6 +1241,7 @@
         const books = window.LLLBook.Storage.getBooks();
         if (books[id]) {
           books[id].stored = true;
+          books[id].too_big = false;
           window.LLLBook.Storage.setBooks(books);
           renderLibrary();
         }
@@ -1065,6 +1291,7 @@
         updateProgressLabel();
         updateBookmarkButton();
         renderBookmarks();
+        setupHighlights();
         renderToc(currentSession);
         renderPageJump(currentSession);
         renderLibrary();
@@ -1085,7 +1312,7 @@
           '<div class="notice">' +
           window.LLLBook.I18n.t('reader.cannot_open') +
           escapeHtml(reason) + '</div>';
-        // Opening failed: make sure neither the preset group nor the floating
+        // Opening failed: make sure neither the preset group nor the toolbar
         // zoom slider lingers over the error notice (showReader already inits
         // both hidden; this also covers a failure after a previous successful
         // PDF/CBZ session).
@@ -1131,6 +1358,23 @@
       });
   }
 
+  // A book over the storage cap has no stored copy. Offer a clear path to keep
+  // reading: pick the same file again. Because bookIdFor(file) keys on
+  // name|size|lastModified, choosing the SAME file yields the SAME id, so the
+  // existing progress/bookmarks (stored under that id) are preserved.
+  function repickForTooBig(book) {
+    showToast(window.LLLBook.I18n.t('reader.too_big_repick'));
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf,.epub,.fb2,.cbz,.txt,.html,.htm,.rtf';
+    input.addEventListener('change', function () {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      openBook(file);
+    });
+    input.click();
+  }
+
   // Remove a stored copy, only freeing space (the metadata/progress remain).
   function removeStored(book) {
     if (!window.LLLBook.StoredBooks) return;
@@ -1139,6 +1383,7 @@
         const books = window.LLLBook.Storage.getBooks();
         if (books[book.id]) {
           books[book.id].stored = false;
+          books[book.id].too_big = false;
           window.LLLBook.Storage.setBooks(books);
         }
         renderLibrary();
@@ -1286,10 +1531,51 @@
     }
   }
 
+  function initLibraryControls() {
+    const search = $('#library-search');
+    const sortSel = $('#library-sort');
+    const formatSel = $('#library-format');
+
+    // Reflect persisted state into the controls.
+    if (search) search.value = libSearch;
+    if (sortSel) sortSel.value = libSort;
+    if (formatSel) formatSel.value = libFormat;
+
+    // applyToDOM does not handle data-i18n-placeholder, so set it here.
+    if (search) {
+      search.setAttribute('placeholder', window.LLLBook.I18n.t('library.search_placeholder'));
+    }
+
+    if (search) {
+      search.addEventListener('input', function (e) {
+        if (e && e.isComposing) return; // IME 変換中は絞り込まない
+        libSearch = (search.value || '').trim();
+        saveLibState();
+        renderLibrary();
+      });
+    }
+    if (sortSel) {
+      sortSel.addEventListener('change', function () {
+        libSort = sortSel.value || 'recent';
+        saveLibState();
+        renderLibrary();
+      });
+    }
+    if (formatSel) {
+      formatSel.addEventListener('change', function () {
+        libFormat = formatSel.value || 'all';
+        saveLibState();
+        renderLibrary();
+      });
+    }
+  }
+
   function init() {
     applySavedTheme();
     applySavedFontSize();
     window.LLLBook.I18n.init();
+    loadLibState();
+    initLibraryControls();
     renderLibrary();
 
     const langSel = $('#lang-select');
@@ -1307,6 +1593,8 @@
     });
     $('#file-input').addEventListener('change', onFiles);
     $('#close-btn').addEventListener('click', closeReader);
+    const headerHomeBtn = document.getElementById('header-home-btn');
+    if (headerHomeBtn) headerHomeBtn.addEventListener('click', closeReader);
     $('#prev-btn').addEventListener('click', function () { step(-1); });
     $('#next-btn').addEventListener('click', function () { step(1); });
     // mobile bottom bar: reuse the shared step() — no new page-turn logic
@@ -1320,9 +1608,10 @@
     $('#theme-sepia').addEventListener('click', function () { setTheme('sepia'); });
     $('#theme-dark').addEventListener('click', function () { setTheme('dark'); });
     $('#bookmark-btn').addEventListener('click', toggleBookmark);
+    const hlBtn = $('#highlight-btn');
+    if (hlBtn) hlBtn.addEventListener('click', addHighlight);
     $('#toc-toggle').addEventListener('click', toggleToc);
     initAccordion();
-    initRailToggle();
     initReaderLayoutSync();
 
     const searchInput = $('#search-input');
@@ -1330,11 +1619,13 @@
     if (searchBtn) searchBtn.addEventListener('click', runSearch);
     if (searchInput) {
       searchInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') { resetSearchUI(); return; } // Escape は変換中でも常に効かせる
+        if (e.isComposing || e.keyCode === 229) return; // IME 変換中の Enter 等は検索しない
         if (e.key === 'Enter') { e.preventDefault(); runSearch(); }
-        else if (e.key === 'Escape') { resetSearchUI(); }
       });
       // Clearing the field by any means (backspace, clear button) drops marks.
-      searchInput.addEventListener('input', function () {
+      searchInput.addEventListener('input', function (e) {
+        if (e && e.isComposing) return; // IME 変換中はクリアしない
         if (!(searchInput.value || '').trim()) resetSearchUI();
       });
     }

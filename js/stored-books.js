@@ -17,7 +17,7 @@
 
   const DB_NAME = 'lllebook';
   const STORE = 'books';
-  const CAP_BYTES = 25 * 1024 * 1024; // 25 MB
+  const CAP_BYTES = 200 * 1024 * 1024; // 200 MB
 
   let dbPromise = null;
 
