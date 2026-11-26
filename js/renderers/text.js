@@ -317,6 +317,7 @@
         }
 
         const searchApi = window.LLLBook.Search.createSearch(container);
+        const hlApi = window.LLLBook.HighlightsDom.create(container);
 
         const session = {
           title: file.name,
@@ -347,10 +348,48 @@
           },
           search: searchApi.search,
           clearSearch: searchApi.clearSearch,
+          // Marker-pen highlights. app.js assigns a function to onSelect after
+          // the session is returned; the document 'selectionchange' listener
+          // below calls it when the user selects text inside the container.
+          onSelect: null,
+          applyHighlights: function (list) { hlApi.applyHighlights(list); },
+          addHighlight: function (anchor) { hlApi.addHighlight(anchor); },
+          removeHighlight: function (anchor) { hlApi.removeHighlight(anchor); },
+          jumpToHighlight: function (anchor) { return hlApi.jumpToHighlight(anchor); },
           destroy: function () {
+            session.onSelect = null;
+            document.removeEventListener('selectionchange', onSelectionChange);
             container.innerHTML = '';
           },
         };
+
+        // TXT/HTML/RTF render into the host document, so window.getSelection()
+        // applies directly. Fire onSelect only for selections inside the
+        // container so library-UI selections never misfire.
+        function onSelectionChange() {
+          if (!session || typeof session.onSelect !== 'function') {
+            if (window.LLLBook && window.LLLBook.hlDbg) window.LLLBook.hlDbg('[HL-DBG-TXT] skip: onSelect not fn ' + typeof (session && session.onSelect));
+            return;
+          }
+          var sel = window.getSelection();
+          if (!sel || !sel.rangeCount) {
+            if (window.LLLBook && window.LLLBook.hlDbg) window.LLLBook.hlDbg('[HL-DBG-TXT] skip: no range ' + (sel && sel.rangeCount));
+            return;
+          }
+          if (!container.contains(sel.anchorNode)) {
+            if (window.LLLBook && window.LLLBook.hlDbg) window.LLLBook.hlDbg('[HL-DBG-TXT] skip: anchor outside container');
+            return;
+          }
+          var anchor = hlApi.getSelectionAnchor();
+          if (anchor) {
+            if (window.LLLBook && window.LLLBook.hlDbg) window.LLLBook.hlDbg('[HL-DBG-TXT] onSelect fire: text= ' + JSON.stringify((anchor.text || '').slice(0, 40)));
+            try { session.onSelect(anchor, anchor.text); } catch (e) { /* never fatal */ }
+          } else {
+            if (window.LLLBook && window.LLLBook.hlDbg) window.LLLBook.hlDbg('[HL-DBG-TXT] skip: getSelectionAnchor returned null');
+          }
+        }
+        document.addEventListener('selectionchange', onSelectionChange);
+
         resolve(session);
       };
       reader.onerror = function () {

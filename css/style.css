@@ -1,14 +1,14 @@
-/* ==========================================================================
+﻿/* ==========================================================================
    LLL-E-Book — "reading room" theme
    Warm paper tones, quiet literary character. Serif for titles & the reading
    pane, sans-serif for UI. One muted terracotta accent used sparingly.
    ========================================================================== */
 
 :root {
-  --font-ui: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    Helvetica, Arial, sans-serif;
-  --font-serif: "Lora", Georgia, "Times New Roman", serif;
-  --font-hand: "Caveat", "Segoe Script", cursive;
+  --font: "Noto Serif", "Noto Serif JP", "Noto Serif SC", "Noto Serif TC",
+    "Noto Serif KR", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Helvetica, Arial, "Hiragino Sans", "Yu Gothic", "Microsoft YaHei",
+    "Malgun Gothic", sans-serif;
 
   /* paper palette */
   --bg: #f3ecdf;        /* page cream */
@@ -33,7 +33,8 @@
   --header-h: 64px;
 
   /* reader toolbar side rail (see the reader-rail rules) */
-  --rail-w: 64px;          /* rail width: fits icon buttons + small controls */
+  --rail-w: 100px;         /* rail width: fits side-by-side prev/next and a
+                              page-number row (input + total) + full-width slider */
   --rail-gap: 18px;        /* gap between the rail and the reading area */
   --rail-anchor: 1440px;   /* == main.reader-wide max-width, keeps the rail
                               glued to the main column's right edge */
@@ -107,7 +108,7 @@ body {
 }
 
 body {
-  font-family: var(--font-ui);
+  font-family: var(--font);
   background: var(--bg);
   color: var(--text);
   line-height: 1.5;
@@ -128,6 +129,7 @@ code {
   border: 1px solid var(--line);
   border-radius: 4px;
   padding: 1px 5px;
+  font-family: inherit;
   font-size: 0.9em;
 }
 
@@ -141,7 +143,7 @@ code {
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 9px 14px;
-  font-family: var(--font-ui);
+  font-family: var(--font);
   font-size: 13.5px;
   font-weight: 600;
   letter-spacing: 0.01em;
@@ -186,8 +188,24 @@ code {
   color: var(--ink);
 }
 
+#highlight-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+#highlight-btn:disabled:hover {
+  background: transparent;
+  color: var(--muted);
+}
+
+/* highlight toolbar button: emphasized while a selection is active */
+#highlight-btn.is-active {
+  color: var(--text);
+  background: var(--accent-soft);
+}
+
 .btn-text {
-  font-family: var(--font-serif);
+  font-family: var(--font);
   font-size: 14px;
   font-weight: 600;
 }
@@ -211,7 +229,7 @@ code {
 }
 
 .btn-label {
-  font-family: var(--font-ui);
+  font-family: var(--font);
   font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.01em;
@@ -294,7 +312,7 @@ code {
   isolation: isolate;
   justify-self: center;
   text-align: center;
-  font-family: var(--font-hand);
+  font-family: var(--font);
   font-size: 36px;
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -329,6 +347,87 @@ code {
   gap: 8px;
 }
 
+/* ---------- Header mirror for the reader (body.reader-active) -----------
+   While a book is open, the always-visible app header swaps the logo for a
+   home button and the "LLL-E-BOOK" title for the book title. The reader's
+   own #close-btn / #book-title in .reader-title-row are hidden to avoid
+   duplicates — the whole row goes display:none while reading (the zoom
+   group now lives in the toolbar, not the row). */
+#header-home-btn {
+  display: none;
+}
+
+.header-book-title {
+  display: none;
+}
+
+body.reader-active .logo {
+  display: none;
+}
+
+/* washi tape decorates the logo sticker only — hide it with the logo */
+body.reader-active .header-left::after {
+  display: none;
+}
+
+body.reader-active .header-left #header-home-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 9px;
+}
+
+/* icon-only in the header (desktop): a quiet corner control like the logo */
+body.reader-active .header-left #header-home-btn .btn-label {
+  display: none;
+}
+
+body.reader-active .app-title .app-title-text {
+  display: none;
+}
+
+/* Desktop: side tracks use auto to reserve the logo and .header-actions
+   content width; the centre track is flexible (minmax(0, 1fr)) so a long title
+   shrinks and clips (min-width:0) instead of inflating past max-content and
+   overlapping .header-actions. Title may sit slightly off centre. */
+@media (min-width: 641px) {
+  body.reader-active .app-header {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  body.reader-active .app-title {
+    min-width: 0;
+    overflow: hidden;
+  }
+}
+
+body.reader-active .header-book-title {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+  font-size: clamp(16px, 4.5vw, 24px);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+/* drop the highlighter swipe behind the book title (it suits the diary wordmark) */
+body.reader-active .app-title::before {
+  content: none;
+}
+
+/* The zoom group now lives in the toolbar, so the in-row title/home button
+   are the row's only content — and the app header already mirrors both while
+   a book is open. Hide the whole row (display:none collapses its height
+   instead of leaving an empty band); the nodes stay in the DOM for app.js
+   (#book-title text, #close-btn click). The header itself and the toolbar
+   are NOT hidden. */
+body.reader-active .reader-title-row {
+  display: none;
+}
+
 .lang-wrap {
   display: inline-flex;
   align-items: center;
@@ -350,15 +449,15 @@ code {
   appearance: none;
   -webkit-appearance: none;
   -moz-appearance: none;
-  font-family: var(--font-hand);
-  font-size: 20px;
+  font-family: var(--font);
+  font-size: 16px;
   font-weight: 600;
   line-height: 1.15;
   color: var(--text);
   background: var(--surface);
   border: 1px dashed var(--line);
   border-radius: 14px 9px 12px 8px; /* hand-drawn, uneven corners */
-  padding: 9px 32px 9px 14px;
+  padding: 7px 28px 7px 12px;
   background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='13' viewBox='0 0 24 24'%3E%3Cpath d='M6 9l6 6 6-6' fill='none' stroke='%238b7d6c' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 12px center;
@@ -397,7 +496,7 @@ main.reader-wide {
 .section-title {
   position: relative;
   display: inline-block;
-  font-family: var(--font-hand);
+  font-family: var(--font);
   font-size: 32px;
   font-weight: 600;
   line-height: 1.1;
@@ -419,7 +518,7 @@ main.reader-wide {
 }
 
 .section-subtitle {
-  font-family: var(--font-ui);
+  font-family: var(--font);
   font-size: 13px;
   color: var(--muted);
   margin-bottom: 22px;
@@ -429,6 +528,74 @@ main.reader-wide {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
   gap: 26px 22px;
+}
+
+/* ---------- Library controls (search / sort / format) ---------- */
+.library-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 14px;
+  margin-bottom: 22px;
+}
+
+.library-search {
+  flex: 1 1 220px;
+  min-width: 0;
+  padding: 8px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13.5px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.library-search:focus {
+  border-color: var(--accent);
+}
+
+.library-control-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font);
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.library-select {
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.library-select:focus {
+  border-color: var(--accent);
+}
+
+@media (max-width: 640px) {
+  .library-controls {
+    gap: 10px;
+  }
+  .library-search {
+    flex: 1 1 100%;
+  }
+  .library-control-label {
+    flex: 1 1 auto;
+  }
+  .library-select {
+    flex: 1;
+  }
 }
 
 /* Book card: rounded "spine" edge on the left, soft shelf-line beneath */
@@ -474,8 +641,8 @@ main.reader-wide {
 }
 
 .book-cover-title {
-  font-family: var(--font-hand);
-  font-size: 26px;
+  font-family: var(--font);
+  font-size: clamp(14px, 3.5vw, 22px);
   line-height: 1.15;
   font-weight: 600;
   display: -webkit-box;
@@ -523,7 +690,7 @@ main.reader-wide {
 }
 
 .book-title {
-  font-family: var(--font-serif);
+  font-family: var(--font);
   font-size: 15.5px;
   font-weight: 600;
   color: var(--text);
@@ -534,7 +701,7 @@ main.reader-wide {
 }
 
 .book-author {
-  font-family: var(--font-ui);
+  font-family: var(--font);
   font-size: 12px;
   font-style: italic;
   color: var(--muted);
@@ -545,7 +712,7 @@ main.reader-wide {
 }
 
 .book-meta {
-  font-family: var(--font-ui);
+  font-family: var(--font);
   font-size: 11.5px;
   color: var(--muted);
   letter-spacing: 0.03em;
@@ -569,7 +736,7 @@ main.reader-wide {
 
 .empty {
   color: var(--muted);
-  font-family: var(--font-ui);
+  font-family: var(--font);
 }
 
 /* ---------- Reader ----------
@@ -584,7 +751,11 @@ main.reader-wide {
   flex-direction: column;
 }
 
-/* page-based formats: constrain reader to viewport so content fits without scrolling */
+/* page-based formats: constrain reader to viewport so content fits without
+    scrolling. Page-based formats (PDF/CBZ — JS toggles .reader-paged on
+    #reader-view, app.js showReader) opt the rail out of the idle-rail fade
+    (see the rail fade rules): the zoom track/percentage must be readable
+    before the first hover/focus. Text formats keep the fade. */
 #reader-view.reader-paged {
   overflow: hidden;
 }
@@ -621,7 +792,6 @@ main.reader-wide {
   top: var(--header-h);
   z-index: 5;
   background: var(--bg);
-  border-bottom: 1px solid var(--line);
   padding-bottom: 12px;
 }
 
@@ -633,6 +803,20 @@ main.reader-wide {
     position: static;
     flex-shrink: 0;
   }
+
+  /* The home button floats absolute over the row's left edge (the zoom
+     slider used to float over its right edge; it now lives in the toolbar),
+     so a long title used to run underneath them. Reserve their widths as
+     horizontal padding on the title: with flex:0 1 auto + min-width:0 the
+     content box shrinks, and the title wraps / clamps to 2 lines inside the
+     safe area instead of overlapping the controls. Use equal left/right
+     values so the flex centring (basis is the padding box) keeps the text
+     visually centred; keep both sides wide (the zoom group used to be the
+     wider control at ~190px) so neither edge overlaps. */
+  .reader-title-row .book-title {
+    padding-left: 200px;
+    padding-right: 200px;
+  }
 }
 
 .reader-title-row {
@@ -642,14 +826,14 @@ main.reader-wide {
   justify-content: center;
   gap: 8px 14px;
   margin-bottom: 12px;
-  padding: 0 4px;
+  padding: 20px 4px 0;
 }
 
 .reader-title-row .book-title {
   flex: 0 1 auto;
   min-width: 0;
-  font-family: var(--font-serif);
-  font-size: 22px;
+  font-family: var(--font);
+  font-size: 18px;
   font-weight: 600;
   color: var(--text);
   text-align: center;
@@ -662,30 +846,31 @@ main.reader-wide {
 }
 
 /* The title is centred on the row's own content box. With flex:0 1 auto it
-   hugs its text and sits at the row centre, so it looks exactly as before
-   whether or not the side controls are shown (JS sets inline display on the
-   zoom group). Both the home button (left) and the zoom slider (right) float
-   absolute over the row's edges — absolute elements take no flex space, so
-   neither one's shown/hidden state can shift the title's centre. A long
-   title may run underneath them; the header/pill backgrounds keep it legible
-   (same trade-off the zoom slider already made). */
+   hugs its text and sits at the row centre. The home button floats absolute
+   over the row's left edge — absolute elements take no flex space, so its
+   shown/hidden state cannot shift the title's centre. (The zoom slider used
+   to float over the row's right edge the same way; it now lives in the
+   toolbar, so only the home button is mirrored here.) While a book is open
+   the whole row is hidden — see body.reader-active .reader-title-row. */
 .reader-title-row #close-btn {
   position: absolute;
   left: 4px;
-  top: 50%;
+  top: calc(50% + 6px);
   transform: translateY(-50%);
 }
 
-.reader-title-row #zoom-slider-group {
-  position: absolute;
-  right: 4px;
-  top: 50%;
-  transform: translateY(-50%);
+/* Home button only: enlarge its icon past the shared 18px .icon size.
+   Scoped to #close-btn so other toolbar icons keep the common size. */
+#close-btn.btn-home .icon {
+  width: 22px;
+  height: 22px;
 }
 
-/* Narrow screens: the title keeps its own line, the zoom group centers on
-   the next one — never squeezed beside a long title. Declared here (not in
-   the responsive section further down) so no extra media block is needed. */
+/* Narrow screens: the title keeps its own line under the absolute home pill.
+   (The zoom group used to center on its own line below the title here; it
+   now lives in the toolbar — see the .reader-toolbar zoom rules.) Declared
+   here (not in the responsive section further down) so no extra media block
+   is needed. */
 @media screen and (max-width: 640px) {
   .reader-title-row {
     flex-wrap: wrap;
@@ -695,23 +880,17 @@ main.reader-wide {
     flex: 1 1 100%;
   }
 
-  .reader-title-row #zoom-slider-group {
-    position: static;
-    transform: none;
-    margin: 0 auto;
-  }
-
   /* Home floats absolute over the row's left edge on desktop; on mobile it
      stays absolute but shrinks to an icon-only pill. The title keeps its own
      full-width line (flex:1 1 100%) and gets a top offset so its first line
-     never sits under the pill; the zoom group drops to static below. */
+     never sits under the pill. */
   .reader-title-row #close-btn {
     top: 0;
     transform: none;
   }
 
   .reader-title-row #close-btn.btn-home {
-    padding: 6px 7px;
+    padding: 8px 9px;
   }
 
   .reader-title-row #close-btn .btn-label {
@@ -719,17 +898,7 @@ main.reader-wide {
   }
 
   .reader-title-row .book-title {
-    padding-top: 34px;
-  }
-
-  /* Zoom inline in the sticky title row: shrink the slider so the row stays
-     compact on narrow screens. */
-  .zoom-inline {
-    padding: 4px 10px;
-  }
-
-  .zoom-inline .zoom-slider {
-    width: 96px;
+    padding-top: 40px;
   }
 }
 
@@ -753,20 +922,9 @@ main.reader-wide {
 /* ---------- Reader toolbar as a right-side vertical rail (desktop >640px) ----------
    The rail is position:fixed so it stays reachable while reading. It lives at
    the right edge of the centered main column (main.reader-wide reserves
-   padding-right for it), so it never overlaps .reader-content. Collapsed via
-    #rail-toggle (JS toggles .rail-collapsed on #reader-view and <body>); a
-    floating #rail-expand-float tab brings it back. Mobile (<=640px) undoes
-    all of this in the responsive block below, restoring the original top-bar
-    layout. */
-
-
-/* rail-only controls: hidden by default (mobile / no-JS keeps the old bar).
-   JS (app.js initRailToggle) sets inline display:flex on #rail-toggle on
-   desktop only; the mobile block below forces both controls back off. */
-.rail-toggle,
-.rail-expand-float {
-  display: none;
-}
+   padding-right for it), so it never overlaps .reader-content.
+   Mobile (<=640px) undoes all of this in the responsive block below,
+   restoring the original top-bar layout. */
 
 @media (min-width: 641px) {
   /* One-screen reading: main contributes no vertical padding, so the reader's
@@ -784,8 +942,8 @@ main.reader-wide {
   /* Symmetry offset: main.reader-wide reserves padding-right for the fixed
      rail (asymmetric box), which would pull the title row's centre left of the
      screen. A matching padding-left on the title row re-centres its content box
-     on the viewport; the zoom slider floats absolute at the right edge, so it
-     never shifts this centre. Declared AFTER the rail-reservation rule above
+     on the viewport; the row's only control (the absolute home pill) takes no
+     flex space, so it never shifts this centre. Declared AFTER the rail-reservation rule above
      (which sets padding-right) so both longhands apply. */
   main.reader-wide .reader-title-row {
     padding-left: calc(var(--rail-w) + var(--rail-gap));
@@ -891,6 +1049,45 @@ main.reader-wide {
     align-items: center;
   }
 
+  /* Page-turn group only: prev/next sit side by side in the widened rail
+     (44px + 44px + 3px gap = 91px < the rail's inner width). Other groups
+     keep the column layout above. */
+  .reader-toolbar .toolbar-nav {
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Both zoom groups use the shared column layout and scroll with the rail. */
+  .reader-toolbar #zoom-slider-group,
+  .reader-toolbar #pdf-zoom-group {
+    flex-shrink: 0;
+  }
+
+  /* Horizontal fallback stays above the percentage in DOM order. */
+  .reader-toolbar #zoom-slider {
+    width: 36px;
+    height: 28px;
+  }
+
+  @supports (writing-mode: vertical-lr) {
+    .reader-toolbar #zoom-slider {
+      height: 112px;
+      writing-mode: vertical-lr;
+      direction: rtl; /* top = zoom in */
+      background: linear-gradient(var(--accent-soft), var(--accent-soft)) center / 4px 100% no-repeat;
+    }
+  }
+
+  .reader-toolbar #zoom-percentage {
+    text-align: center;
+  }
+
+  /* Keep the focus ring inside a 44px button in the narrow rail. */
+  .reader-toolbar #pdf-zoom-group .btn:focus-visible {
+    outline-offset: -2px;
+  }
+
   .reader-toolbar .toolbar-sep {
     width: auto;
     height: 1px;
@@ -901,7 +1098,7 @@ main.reader-wide {
      only on desktop, so it stays a quiet corner control beside the title. */
   #close-btn.btn-home {
     justify-content: center;
-    padding: 8px 6px;
+    padding: 10px 9px;
   }
 
   #close-btn .btn-label {
@@ -925,15 +1122,19 @@ main.reader-wide {
     text-align: center;
   }
 
+  /* Page number row: #page-input + "/ total" share the first line, and the
+     slider (flex-basis 100%) wraps onto its own full-width second line. */
   .reader-toolbar .page-jump {
     margin-left: 0;
     width: auto;
-    flex-direction: column;
-    align-items: stretch;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
     gap: 6px;
   }
 
   .reader-toolbar .page-slider {
+    flex: 1 1 100%; /* wrap onto the second line and span it fully */
     width: 100%;
   }
 
@@ -946,17 +1147,9 @@ main.reader-wide {
     background-size: var(--fill, 0%) 100%;
   }
 
-  .rail-toggle {
-    display: none; /* JS enables it on desktop only (inline style) */
-    align-self: flex-end;
-    padding: 6px;
-  }
-
   /* 案4: auto-fade the idle rail. Gated on prefers-reduced-motion (always full
      opacity when the user opts out of motion) and revived on hover / Tab focus
-     (:focus-within). Kept BEFORE #reader-view.rail-collapsed below so that rule
-     wins by source order at equal specificity — a collapsed rail must stay
-     hidden (opacity:0 + visibility:hidden), never revived by :hover/:focus. */
+     (:focus-within). */
   @media (prefers-reduced-motion: no-preference) {
     .reader-toolbar {
       opacity: 0.45;
@@ -967,41 +1160,17 @@ main.reader-wide {
     .reader-toolbar:focus-within {
       opacity: 1;
     }
-  }
 
-  #reader-view.rail-collapsed .reader-toolbar {
-    transform: translateX(calc(100% + 24px));
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-  }
-
-  .rail-expand-float {
-    position: fixed;
-    top: calc(var(--header-h) + 18px);
-    right: max(12px, calc((100vw - var(--rail-anchor)) / 2 + 26px));
-    width: var(--rail-w);
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    box-shadow: var(--shadow-soft);
-    z-index: 6;
-  }
-
-  /* the expand tab only makes sense while a book is open (body.reader-active
-     is toggled by app.js showReader/showLibrary) */
-  body.reader-active.rail-collapsed .rail-expand-float {
-    display: flex;
-  }
-
-  /* while the rail is collapsed, main gives its reserved space back to the text */
-  body.rail-collapsed main.reader-wide {
-    padding-right: 26px;
-  }
-
-  /* ...and the title row drops its symmetry offset with it. */
-  body.rail-collapsed main.reader-wide .reader-title-row {
-    padding-left: 0;
+    /* PDF/CBZ (.reader-paged): the zoom groups are the primary controls, so
+       opt them out of the idle fade — track, thumb and percentage stay
+       visible before any hover/focus. opacity multiplies through the parent
+       chain, so raising only the child groups could never exceed the rail's
+       own 0.45; reset the rail itself to full opacity when paged. (The
+       former child-side calc(0.45 + var(--reader-paged,0) * 0.55) was dead
+       for exactly this reason and is removed.) */
+    #reader-view.reader-paged .reader-toolbar {
+      opacity: 1;
+    }
   }
 
   /* Fix 3: hide the rail's vertical scrollbar visually (the JS-pinned rail can
@@ -1025,7 +1194,7 @@ main.reader-wide {
 }
 
 .progress-label {
-  font-family: var(--font-ui);
+  font-family: var(--font);
   font-size: 11.5px;
   color: var(--muted);
   letter-spacing: 0.03em;
@@ -1084,7 +1253,7 @@ main.reader-wide {
 }
 
 .toc-panel h3 {
-  font-family: var(--font-serif);
+  font-family: var(--font);
   font-size: 15px;
   margin-bottom: 12px;
   color: var(--text);
@@ -1100,7 +1269,7 @@ main.reader-wide {
   background: none;
   border: none;
   padding: 2px 0;
-  font-family: var(--font-serif);
+  font-family: var(--font);
   font-size: 15px;
   color: var(--text);
   text-align: left;
@@ -1181,7 +1350,7 @@ main.reader-wide {
   text-align: left;
   background: none;
   border: none;
-  font-family: var(--font-ui);
+  font-family: var(--font);
   font-size: 13.5px;
   color: var(--text);
   padding: 5px 0;
@@ -1224,7 +1393,7 @@ main.reader-wide {
   border-radius: 8px;
   background: var(--surface-2);
   color: var(--text);
-  font-family: var(--font-ui);
+  font-family: var(--font);
   font-size: 13.5px;
   outline: none;
   transition: border-color 0.15s ease;
@@ -1240,7 +1409,7 @@ main.reader-wide {
 }
 
 .search-count {
-  font-family: var(--font-ui);
+  font-family: var(--font);
   font-size: 11.5px;
   color: var(--muted);
   letter-spacing: 0.03em;
@@ -1257,7 +1426,7 @@ main.reader-wide {
   border-radius: 8px;
   padding: 7px 9px;
   margin-bottom: 4px;
-  font-family: var(--font-ui);
+  font-family: var(--font);
   font-size: 13px;
   line-height: 1.45;
   color: var(--text);
@@ -1279,6 +1448,35 @@ mark.book-search-hit {
   box-shadow: inset 0 -2px 0 var(--accent);
 }
 
+/* user highlights (marker pen), separate from search hits; yellow kept
+   readable across light/sepia/dark via per-theme alpha tuning */
+mark.lll-highlight {
+  background: rgba(255, 210, 0, 0.45);
+  color: inherit;
+  border-radius: 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+[data-theme="sepia"] mark.lll-highlight {
+  background: rgba(255, 200, 40, 0.4);
+}
+
+[data-theme="dark"] mark.lll-highlight {
+  background: rgba(255, 210, 0, 0.32);
+}
+
+/* highlight list rows reuse .bookmark-item/.bookmark-label/.bookmark-remove;
+   the leading dot marks them as marker entries */
+.highlight-item::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 210, 0, 0.85);
+}
+
 .book-stored {
   display: flex;
   align-items: center;
@@ -1291,7 +1489,7 @@ mark.book-search-hit {
 
 .book-stored-label {
   color: var(--muted);
-  font-family: var(--font-ui);
+  font-family: var(--font);
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
@@ -1321,7 +1519,7 @@ mark.book-search-hit {
   background: none;
   border: 1px dashed var(--line);
   color: var(--muted);
-  font-family: var(--font-ui);
+  font-family: var(--font);
   font-size: 12px;
   letter-spacing: 0.02em;
   border-radius: 8px;
@@ -1338,7 +1536,7 @@ mark.book-search-hit {
 
 .book-note {
   margin-top: 8px;
-  font-family: var(--font-ui);
+  font-family: var(--font);
   font-size: 11px;
   color: var(--accent-strong);
 }
@@ -1356,7 +1554,7 @@ mark.book-search-hit {
   border-radius: 12px;
   padding: 12px 16px;
   max-width: min(90vw, 480px);
-  font-family: var(--font-ui);
+  font-family: var(--font);
   font-size: 14px;
   opacity: 0;
   pointer-events: none;
@@ -1439,7 +1637,7 @@ mark.book-search-hit {
 }
 
 .drop-overlay-text {
-  font-family: var(--font-hand);
+  font-family: var(--font);
   font-size: 30px;
   line-height: 1.2;
   color: var(--accent-strong);
@@ -1453,10 +1651,22 @@ mark.book-search-hit {
   box-shadow: var(--shadow-soft);
   overflow: auto;
   padding: 42px 56px;
-  font-family: var(--font-serif);
+  font-family: var(--font);
   font-size: var(--reader-font-size);
   color: var(--text);
   line-height: 1.75;
+}
+
+/* PDF fit-page portrait: pdf.js sets --pdf-page-w to the displayed page width
+   (+ side padding) so the card hugs the page and centers, killing dead side
+   margins. Unset elsewhere (other modes/renderers/mobile) -> 100% full width.
+   Desktop only; mobile cards are already near full width. */
+@media (min-width: 641px) {
+  .reader-content {
+    max-width: var(--pdf-page-w, 100%);
+    min-width: 280px;
+    margin-inline: auto;
+  }
 }
 
 /* Reader text readability: the card grows with main.reader-wide, but keep a
@@ -1479,7 +1689,7 @@ mark.book-search-hit {
 .reader-content .notice,
 .notice {
   color: var(--muted);
-  font-family: var(--font-ui);
+  font-family: var(--font);
   font-size: 15px;
 }
 
@@ -1516,22 +1726,76 @@ mark.book-search-hit {
 
 /* PDF: page canvas centred; wrapper scrolls when zoomed in */
 .pdf-page {
+  position: relative;
   width: 100%;
   height: 100%;
   display: flex;
   overflow: auto;
 }
+/* Stage: flex-centered box holding the canvas and the text layer overlay, so
+   both share one origin. JS sizes it to the rendered viewport pixels. */
+.pdf-page-stage {
+  position: relative;
+  flex: none;
+  margin: auto;
+}
 .pdf-page canvas {
   display: block;
   max-width: none;
   max-height: none;
-  margin: auto;
+  margin: 0;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* PDF text layer overlay (marker-pen selection). JS builds one host per
+   render inside the stage; pdf.js TextLayer places its spans with percentages
+   of this box and scales fonts by --total-scale-factor (= viewport.scale,
+   set per host: --font-height is in PDF user space). setLayerDimensions
+   writes explicit width/height from those variables; the inset pinning below
+   keeps the host fitted to the stage regardless. */
+.pdf-textlayer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: auto !important;
+  height: auto !important;
+  color: transparent;
+  user-select: text;
+  -webkit-user-select: text;
+  transform-origin: 0 0;
+  --scale-round-x: 1px;
+  --scale-round-y: 1px;
+}
+/* pdf.js TextLayer writes only left/top/--font-height/--scale-x/--rotate as
+   inline styles on each span; the geometry contract (absolute positioning,
+   pre-formatted text, top-left transform origin, font sizing driven by
+   --total-scale-factor) lives in its stylesheet, which this app does not
+   ship. Without it the spans stay static and pile up at the top-left, so a
+   drag selects every overlapping span at once (whole-paragraph highlight). */
+.pdf-textlayer span,
+.pdf-textlayer br {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+}
+.pdf-textlayer span {
+  font-size: calc(var(--font-height) * var(--total-scale-factor));
+  transform: scaleX(var(--scale-x, 1)) rotate(var(--rotate, 0deg));
+}
+.pdf-textlayer ::selection,
+.pdf-textlayer::selection {
+  background: rgba(255, 210, 0, 0.45);
 }
 
 .reader-content .loading,
 .loading {
   color: var(--muted);
-  font-family: var(--font-ui);
+  font-family: var(--font);
 }
 
 /* warm, quiet scrollbar for the reading pane */
@@ -1555,20 +1819,40 @@ mark.book-search-hit {
   background: var(--accent-soft);
 }
 
-/* Zoom slider for continuous zoom control */
+/* ---------- Zoom slider (toolbar: desktop vertical rail / mobile bar) ------
+   #zoom-slider-group lives inside .reader-toolbar right after .toolbar-nav,
+   before #pdf-zoom-group (index.html). JS only toggles the group's inline
+   display (flex/none, PDF/CBZ only) — while hidden nothing renders here at
+   all, and no CSS below sets its display (no !important overrides either).
+   Per-breakpoint sizing (vertical range in the rail, horizontal range in the
+   mobile bar) lives in the .reader-toolbar rules of the two toolbar blocks. */
+
+/* Shared control styling. The control AREA (what the pointer grabs and the
+   focus ring wraps) is sized per breakpoint in the toolbar blocks; the
+   VISIBLE track stays thin via this background box — a plain solid
+   background would paint the whole control area, so the track is drawn as a
+   centered 4px-tall gradient line (horizontal default; the desktop vertical
+   range overrides it to a 4px-wide full-height line in its @supports block).
+   The old title-row margin-top:7px optical alignment is gone — the toolbar
+   groups align with flex gaps. */
 .zoom-slider {
-  width: 100px;
-  height: 4px;
   appearance: none;
-  background: var(--accent-soft);
+  -webkit-appearance: none;
+  background: linear-gradient(var(--accent-soft), var(--accent-soft)) center / 100% 4px no-repeat;
   border-radius: 2px;
   cursor: pointer;
-  vertical-align: middle;
-  margin-top: 7px;
+  margin: 0;
+  flex: 0 0 auto;
+}
+
+.zoom-slider:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .zoom-slider::-webkit-slider-thumb {
   appearance: none;
+  -webkit-appearance: none;
   width: 16px;
   height: 16px;
   background: var(--accent);
@@ -1589,32 +1873,13 @@ mark.book-search-hit {
 }
 
 .zoom-percentage {
-  font-family: var(--font-ui);
+  font-family: var(--font);
   font-size: 12px;
   color: var(--muted);
-  min-width: 35px;
+  /* wide enough that "400%" never wraps or clips */
+  min-width: 40px;
+  white-space: nowrap;
   display: inline-block;
-  margin-left: 4px;
-}
-
-/* ---------- Zoom slider (inline in the sticky reader title row) ----------
-   #zoom-slider-group lives inside .reader-title-row, right of #book-title
-   (index.html). The header is sticky, so no fixed positioning or JS geometry
-   sync is needed anymore. JS only toggles the group's inline display
-   (flex/none, PDF/CBZ only) — while hidden nothing renders here at all. */
-.zoom-inline {
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 10px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  box-shadow: var(--shadow-soft);
-  padding: 6px 12px;
-  border-radius: 99px;
-}
-
-.zoom-inline .zoom-slider {
-  width: 150px;
 }
 
 /* ---------- Responsive ---------- */
@@ -1659,10 +1924,49 @@ mark.book-search-hit {
   }
   .reader-toolbar .toolbar-group { flex-direction: row; align-items: center; }
   .reader-toolbar .toolbar-sep { width: 1px; height: 22px; margin: 0 6px; }
+
+  /* Zoom slider group on the horizontal bar: it is the first VISIBLE group
+     (.toolbar-nav is hidden at <=640px — the fixed bottom bar turns pages),
+     so it starts the bar. flex-basis 100% gives it a full-width row of its
+     own; slider and percentage always stay on that one row.
+
+     display stays JS-driven (inline flex/none from updateZoomUI): no display
+     and no !important here, and a hidden group (none) takes no row at all. */
+  .reader-toolbar #zoom-slider-group {
+    flex: 1 1 100%;
+    min-width: 0;
+    gap: 8px;
+  }
+
+  /* Horizontal range: 44px-tall control area (WCAG 2.2 target size) with the
+     thin visible track kept by the shared .zoom-slider background; shrinks
+     below its 150px cap on narrow screens. flex:0 1 auto / min-width:0
+     override the shared .zoom-slider flex:0 0 auto so the range can actually
+     shrink instead of pushing the percentage out of the bar. */
+  .reader-toolbar #zoom-slider {
+    width: clamp(96px, 100%, 150px);
+    min-width: 0;
+    flex: 0 1 auto;
+    height: 44px;
+  }
+
+  /* Percentage pinned to the row's right end, never wrapping ("400%" fits). */
+  .reader-toolbar #zoom-percentage {
+    margin-left: auto;
+    flex: 0 0 auto;
+    text-align: right;
+  }
+
+  /* PDF presets (PDF only): one horizontal row at the head of the NEXT
+     line — never split into one button per line. */
+  .reader-toolbar #pdf-zoom-group {
+    flex: 0 1 auto;
+    flex-wrap: nowrap;
+  }
   /* Home in the title row on mobile: icon-only absolute pill (see the
      reader-title-row 640px block). Undo the desktop rail's extra padding so
      the corner control stays compact. */
-  #close-btn.btn-home { justify-content: center; padding: 6px 7px; }
+  #close-btn.btn-home { justify-content: center; padding: 8px 9px; }
   #close-btn .btn-label { display: none; }
 
   .reader-toolbar .progress-label { text-align: right; }
@@ -1675,11 +1979,6 @@ mark.book-search-hit {
     align-items: center;
     gap: 4px;
   }
-  /* rail-only controls off on mobile (JS sets inline display:flex on
-     #rail-toggle on desktop; !important wins over the inline style) */
-  .rail-expand-float,
-  #rail-toggle.rail-toggle { display: none !important; }
-
   .app-header {
     padding: 0 14px;
     /* Center title column shrinks (minmax(0,1fr)) so it can ellipsis instead
@@ -1701,14 +2000,31 @@ mark.book-search-hit {
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  /* Reader title must be clamped to its grid column, not centered at
+     max-content (which overflows into the home button / actions). Stretch the
+     grid item so min-width:0 + ellipsis actually bound it to the 1fr track. */
+  body.reader-active .app-title {
+    justify-self: stretch;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  /* Reader header mirror on mobile: single-line ellipsis (the grid column
+     already truncates), matching the .app-title nowrap treatment above. */
+  body.reader-active .header-book-title {
+    display: block;
+    -webkit-line-clamp: unset;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   .section-title { font-size: 26px; }
   .header-actions { gap: 6px; min-width: 0; flex-shrink: 0; }
-  .lang-select { padding: 8px 30px 8px 12px; font-size: 17px; }
+  .lang-select { padding: 8px 30px 8px 12px; font-size: 14px; }
   #upload-btn { padding: 8px 10px; font-size: 13px; }
   .reader-header { padding-left: 4px; padding-right: 4px; }
   .library-list { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 20px 14px; }
   .book-cover { height: 200px; padding: 14px; }
-  .book-cover-title { font-size: 14px; }
 
   .reader-content { padding: 22px 20px; }
   .reader-content .page { padding: 20px 16px; }
@@ -1788,8 +2104,8 @@ mark.book-search-hit {
     padding-bottom: calc(64px + env(safe-area-inset-bottom));
   }
 
-  /* Zoom now lives inline in the sticky title row (.zoom-inline, sized above);
-     nothing fixed to clear here anymore. */
+  /* Zoom now lives in the toolbar's horizontal bar (sized in the block
+     above); nothing fixed to clear here anymore. */
 
   /* Undo the desktop one-screen rules: mobile scrolls the whole page again, so
      the card must keep a usable minimum height and the reader no vertical cap.
@@ -1807,7 +2123,7 @@ mark.book-search-hit {
 /* narrower phones: shrink the title further instead of wrapping */
 @media (max-width: 420px) {
   .app-title { font-size: 22px; padding: 0 6px; }
-  .lang-select { padding: 7px 26px 7px 10px; font-size: 15px; }
+  .lang-select { padding: 7px 26px 7px 10px; font-size: 13px; }
   #upload-btn { padding: 7px 8px; font-size: 12px; }
 }
 
@@ -1821,7 +2137,7 @@ mark.book-search-hit {
 @media (max-width: 380px) {
   .logo { height: 32px; padding: 3px; }
   .header-actions { gap: 4px; }
-  .lang-select { padding: 6px 22px 6px 8px; font-size: 13px; background-position: right 7px center; }
+  .lang-select { padding: 6px 22px 6px 8px; font-size: 12px; background-position: right 7px center; }
   #upload-btn { padding: 6px 6px; font-size: 11px; }
   .app-title { font-size: 18px; padding: 0 4px; }
 }
@@ -1841,7 +2157,7 @@ mark.book-search-hit {
   border-radius: 6px;
   background: var(--surface);
   color: var(--text);
-  font-family: var(--font-ui);
+  font-family: var(--font);
   font-size: 12px;
   font-weight: 600;
   text-align: center;
@@ -1854,7 +2170,7 @@ mark.book-search-hit {
 }
 
 .page-total {
-  font-family: var(--font-ui);
+  font-family: var(--font);
   font-size: 11.5px;
   color: var(--muted);
   letter-spacing: 0.03em;
@@ -1889,4 +2205,34 @@ mark.book-search-hit {
   border: 2px solid var(--surface);
   box-shadow: 0 1px 3px rgba(0,0,0,0.2);
   cursor: pointer;
+}
+
+/* ==========================================================================
+   CJK font stacks per UI language (lang attr set on <html> by js/i18n.js)
+   Base Noto Sans comes first so latin glyphs stay identical across locales;
+   the regional face supplies the CJK glyphs it lacks.
+   ========================================================================== */
+
+:lang(ja) {
+  --font: "Noto Serif", "Noto Serif JP", -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, Helvetica, Arial, "Hiragino Sans", "Yu Gothic",
+    "Microsoft YaHei", "Malgun Gothic", sans-serif;
+}
+
+:lang(zh-Hans) {
+  --font: "Noto Serif", "Noto Serif SC", -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, Helvetica, Arial, "Microsoft YaHei", "PingFang SC",
+    "Hiragino Sans", "Malgun Gothic", sans-serif;
+}
+
+:lang(zh-Hant) {
+  --font: "Noto Serif", "Noto Serif TC", -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, Helvetica, Arial, "PingFang TC", "Microsoft JhengHei",
+    "Microsoft YaHei", "Malgun Gothic", sans-serif;
+}
+
+:lang(ko) {
+  --font: "Noto Serif", "Noto Serif KR", -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, Helvetica, Arial, "Apple SD Gothic Neo",
+    "Malgun Gothic", "Microsoft YaHei", sans-serif;
 }

@@ -510,6 +510,7 @@
 
           var meta = extractMeta(doc);
           var searchApi = window.LLLBook.Search.createSearch(container);
+          var hlApi = window.LLLBook.HighlightsDom.create(container);
 
           // Best-effort coverpage: resolve before the session is returned so
           // app.js can persist it. The wrapper below always settles within
@@ -540,27 +541,42 @@
             });
           }
 
+          // Shared reference to the live session so the document-level
+          // selectionchange listener and destroy() can reach it. buildSession
+          // assigns it; settleWithCover keeps its own local handle for resolve.
+          var session = null;
+
           function settleWithCover() {
             resolveCover().then(function (cover) {
-              var session = null;
+              var built = null;
               try {
-                session = buildSession(cover);
+                built = buildSession(cover);
               } catch (e) {
-                session = null;
+                built = null;
               }
-              if (!session) {
+              if (!built) {
                 try {
-                  session = buildSession(null);
+                  built = buildSession(null);
                 } catch (e2) {
                   reject(new Error('fb2-render: ' + e2.message));
                   return;
                 }
               }
-              resolve(session);
+              resolve(built);
             });
           }
+          // Text selection -> notify app.js via session.onSelect. Guarded so a
+          // not-yet-built session or an unwired onSelect never fires, and so a
+          // selection outside this container (e.g. the reader chrome) is ignored.
+          function onSelectionChange() {
+            if (!session || typeof session.onSelect !== 'function') return;
+            var sel = window.getSelection();
+            if (!sel || !sel.rangeCount || !container.contains(sel.anchorNode)) return;
+            var anchor = hlApi.getSelectionAnchor();
+            if (anchor) { try { session.onSelect(anchor, anchor.text); } catch (e) { /* never fatal */ } }
+          }
           function buildSession(cover) {
-            var session = {
+            session = {
             title: meta.title || file.name,
             author: meta.author,
             format: 'fb2',
@@ -596,7 +612,17 @@
             },
             search: searchApi.search,
             clearSearch: searchApi.clearSearch,
+            // Marker-pen highlights. app.js assigns a function to onSelect after
+            // the session is returned; the document 'selectionchange' listener
+            // calls it when the user selects text inside the container.
+            onSelect: null,
+            applyHighlights: function (list) { hlApi.applyHighlights(list); },
+            addHighlight: function (anchor) { hlApi.addHighlight(anchor); },
+            removeHighlight: function (anchor) { hlApi.removeHighlight(anchor); },
+            jumpToHighlight: function (anchor) { return hlApi.jumpToHighlight(anchor); },
             destroy: function () {
+              document.removeEventListener('selectionchange', onSelectionChange);
+              session.onSelect = null;
               container.innerHTML = '';
             },
             };
@@ -604,6 +630,7 @@
             return session;
           }
 
+          document.addEventListener('selectionchange', onSelectionChange);
           settleWithCover();
         } catch (e) {
           reject(new Error('fb2-render: ' + e.message));
