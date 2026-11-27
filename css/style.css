@@ -94,6 +94,9 @@
 .cover-plum   { --cover-a: #7c5f77; --cover-b: #644a60; --cover-t: #f4eae6; }
 .cover-ochre  { --cover-a: #bd9a5b; --cover-b: #a2813f; --cover-t: #fbf5e6; }
 .cover-slate  { --cover-a: #6e6f78; --cover-b: #565760; --cover-t: #eef0ee; }
+.cover-indigo { --cover-a: #5b6b8c; --cover-b: #46536e; --cover-t: #eef0f5; }
+.cover-teal   { --cover-a: #4f7d7a; --cover-b: #3c625f; --cover-t: #eaf3f1; }
+.cover-amber  { --cover-a: #c08a3e; --cover-b: #a06f2c; --cover-t: #fbf3e3; }
 
 /* ---------- Base / reset ---------- */
 * {
@@ -603,7 +606,7 @@ main.reader-wide {
   position: relative;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-left: 6px solid var(--accent);
+  border-left: 6px solid var(--book-spine-color, var(--accent));
   border-radius: 10px 12px 12px 10px; /* rounded spine on the left */
   box-shadow: var(--shadow-soft);
   cursor: pointer;
@@ -613,8 +616,20 @@ main.reader-wide {
 .book-card:hover {
   transform: translateY(-3px);
   box-shadow: var(--shadow-lift);
-  border-left-color: var(--ink);
+  border-left-color: var(--book-spine-color, var(--ink));
 }
+
+/* Format-specific book spines. These remain visible even when a real cover
+   image fills the card, making the file type recognizable at a glance. */
+.book-card.format-pdf     { --book-spine-color: #a85c3b; }
+.book-card.format-epub    { --book-spine-color: #48624a; }
+.book-card.format-fb2     { --book-spine-color: #644a60; }
+.book-card.format-txt     { --book-spine-color: #565760; }
+.book-card.format-html    { --book-spine-color: #a2813f; }
+.book-card.format-rtf     { --book-spine-color: #46536e; }
+.book-card.format-cbz     { --book-spine-color: #3c625f; }
+.book-card.format-cbr     { --book-spine-color: #a06f2c; }
+.book-card.format-unknown { --book-spine-color: var(--accent); }
 
 /* faint shelf-line resting under the card */
 .book-card::after {

@@ -28,7 +28,7 @@
       </label>
       <button id="upload-btn" class="btn primary" type="button" data-i18n="header.upload">Upload</button>
       <input type="file" id="file-input"
-             accept=".pdf,.epub,.fb2,.cbz,.txt,.html,.htm,.rtf"
+             accept=".pdf,.epub,.fb2,.cbz,.cbr,.txt,.html,.htm,.rtf"
              multiple hidden>
     </div>
   </header>
@@ -55,6 +55,8 @@
             <option value="epub" data-i18n="format.epub">EPUB</option>
             <option value="txt" data-i18n="format.txt">Text</option>
             <option value="fb2" data-i18n="format.fb2">FB2</option>
+            <option value="cbz" data-i18n="format.cbz">CBZ</option>
+            <option value="cbr" data-i18n="format.cbr">CBR</option>
           </select>
         </label>
       </div>
@@ -202,6 +204,7 @@
 
   <!-- CDN libraries -->
   <script src="js/pdf-library.js"></script>
+  <script src="js/unrar-library.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" integrity="sha512-XMVd28F1oH/O71fzwBnV7HucLxVwtxf26XV8P4wPk26EDxuGZ91N8bsOttmnomcCD3CS5ZMRL50H0GgOHvegtg==" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/epubjs@0.3.93/dist/epub.min.js" integrity="sha512-qZUwAZnQNbTGK3xweH0p9dJ0/FflhdJwGr5IhvhuBtltqdTi6G8TjsAf8WINe3uhhyt2wueXacvXtQtOiHm26Q==" crossorigin="anonymous"></script>
 

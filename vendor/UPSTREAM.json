@@ -842,6 +842,73 @@
         "source": "scripts/build-pdf-file-bridge.mjs",
         "purpose": "file:// cannot import ESM or module workers. These IIFE bridges bundle the same verified safe ESM and initialize its main-thread worker, preserving local-file use without restoring the old vulnerable source."
       }
+    },
+    {
+      "name": "node-unrar-js",
+      "version": "2.0.2",
+      "upstream": {
+        "url": "git+https://github.com/YuJianrong/node-unrar.js.git",
+        "type": "git"
+      },
+      "license": "MIT",
+      "tarball": "https://registry.npmjs.org/node-unrar-js/-/node-unrar-js-2.0.2.tgz",
+      "integrity": "sha512-hLNmoJzqaKJnod8yiTVGe9hnlNRHotUi0CreSv/8HtfRi/3JnRC8DvsmKfeGGguRjTEulhZK6zXX5PXoVuDZ2w==",
+      "gitHead": "b8a26b187d03a33506af778fa8c8e0adc60b7755",
+      "notes": "CBR (RAR) support. Vendored from the esm/ tree of the official tarball (esm/index.esm.js and esm/js/*, extensionless import specifiers left untouched). unrar.wasm is the official prebuilt build of the unrar C++ library unrarsrc-6.1.7. The tarball ships only the MIT license of the JS wrapper, so vendor/unrar/LICENSE_UNRAR.txt carries the full text of the rarlab UnRAR freeware license (https://www.rarlab.com/rar/unrarsrc-6.1.7.tar.gz -> unrar/license.txt), whose clause 2 requires the \"UnRAR source code may be used...\" paragraph to be included in the resulting package. RAR volumes (multi-part archives) are not supported by unrar 6.1.7 through this API.",
+      "files": [
+        {
+          "path": "unrar/LICENSE.md",
+          "sha256": "263ab8403cf8651aeff39ce72202a2d8a07eb29e3c37a7190cc6e2e3c0e8da36"
+        },
+        {
+          "path": "unrar/LICENSE_UNRAR.txt",
+          "sha256": "6ecc1687808b7d66b24f874755abfed7464d9751ed0001cd4e8e5d9bf397ff8a"
+        },
+        {
+          "path": "unrar/index.esm.js",
+          "sha256": "0eec4105461c1d47e598042a41a84256147dc8cdefe78965365bc73b9cd1827d"
+        },
+        {
+          "path": "unrar/unrar.js",
+          "sha256": "2f6d35bcf13656600d332dbd009fbcfdafa4a324896dca69252865b35ef36096"
+        },
+        {
+          "path": "unrar/unrar.singleton.js",
+          "sha256": "b1a0c58eeb4f135121ed1dd0dadff42365a2aa4636b416880e40dd62bdd1d8a4"
+        },
+        {
+          "path": "unrar/Extractor.js",
+          "sha256": "4e6ac19f6adda919248066c361137927e2add5b366087792348eb4737c54255e"
+        },
+        {
+          "path": "unrar/ExtractorData.js",
+          "sha256": "9e94db889e204ab96795ec98e29d4935d17096918925ea8da0a64b749ccc7de4"
+        },
+        {
+          "path": "unrar/ExtractorData.helper.js",
+          "sha256": "2013a0b00edc3537f751e79cc8c3adf9ac8303e0b1a9341d91b3ea2959c3baec"
+        },
+        {
+          "path": "unrar/unrar.wasm",
+          "sha256": "c7d79f869196e3c79c053ba74a8f629116de8293a94f60cc851bbcd7977d0c2b"
+        },
+        {
+          "path": "unrar/unrar.file.js",
+          "sha256": "d27fa6883a7f60bba30cc1ef96448f0420b6b3a76ecea8a8a005d9fe330c47a4",
+          "generated": true
+        },
+        {
+          "path": "unrar/unrar.mjs",
+          "sha256": "67da633632ba5b135419f462b3c850a90e536f53ff8e4d6892454230f0c06211",
+          "generated": true
+        }
+      ],
+      "generatedFileCompatibility": {
+        "tool": "esbuild",
+        "version": "0.28.2",
+        "source": "scripts/build-unrar-bridge.mjs",
+        "purpose": "node-unrar-js ships no UMD/IIFE build and its ESM import specifiers are extensionless, so a plain <script> cannot load it. unrar.file.js is an IIFE bridge over the same verified ESM release with unrar.wasm inlined as base64, and unrar.mjs is the ESM entry of the same bundle. The wasm bytes are inlined because the Emscripten output refuses to fetch() a file: URI (isFileURI); createExtractorFromData({ data, wasmBinary }) is the documented way to hand it the bytes, which also keeps file:// working without any request."
+      }
     }
   ]
 }

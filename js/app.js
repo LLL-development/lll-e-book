@@ -31,7 +31,7 @@
       if (s.sort === 'title' || s.sort === 'author' || s.sort === 'progress' || s.sort === 'recent') {
         libSort = s.sort;
       }
-      if (s.format === 'all' || s.format === 'pdf' || s.format === 'epub' || s.format === 'txt' || s.format === 'fb2') {
+      if (s.format === 'all' || s.format === 'pdf' || s.format === 'epub' || s.format === 'txt' || s.format === 'fb2' || s.format === 'cbz' || s.format === 'cbr') {
         libFormat = s.format;
       }
     } catch (e) {
@@ -104,7 +104,7 @@
     const rv = $('#reader-view');
     rv.classList.remove('hidden');
     setMainWide(true);
-    const isPaged = fmt && (fmt.key === 'pdf' || fmt.key === 'cbz');
+    const isPaged = fmt && (fmt.key === 'pdf' || fmt.key === 'cbz' || fmt.key === 'cbr');
     rv.classList.toggle('reader-paged', isPaged);
     // Start both zoom controls hidden: they only appear after a successful
     // open, when updateZoomUI() shows them (presets for PDF, slider for
@@ -251,9 +251,14 @@
     // session.cover. Persist it in IndexedDB (never localStorage) and refresh
     // the library card once saved. Never let a cover failure break reading.
     if (session.cover && window.LLLBook.Covers) {
+      // TEMP diagnostic logs — remove after cover issue triage.
+      console.log('[EPUB cover] applySessionMeta session.format =', session.format, 'session.cover present =', !!session.cover);
       window.LLLBook.Covers.save(id, session.cover)
-        .then(function () { renderLibrary(); })
-        .catch(function () {});
+        .then(function () {
+          console.log('[EPUB cover] Covers.save OK id =', id);
+          renderLibrary();
+        })
+        .catch(function (err) { console.log('[EPUB cover] Covers.save failed', err); });
     }
     // Some renderers (PDF) resolve the session before the cover is ready and
     // hand it over later via onCover. Save and refresh then too.
@@ -304,16 +309,34 @@
       return;
     }
 
-    const tones = [
-      'cover-terra', 'cover-forest', 'cover-plum', 'cover-ochre', 'cover-slate'
-    ];
-    entries.forEach(function (b, i) {
+    const FORMAT_TONE = {
+      pdf: 'cover-terra',
+      epub: 'cover-forest',
+      fb2: 'cover-plum',
+      txt: 'cover-slate',
+      html: 'cover-ochre',
+      rtf: 'cover-indigo',
+      cbz: 'cover-teal',
+      cbr: 'cover-amber'
+    };
+    const DEFAULT_TONE = 'cover-slate';
+    const FORMAT_SPINE_CLASS = {
+      pdf: 'format-pdf',
+      epub: 'format-epub',
+      fb2: 'format-fb2',
+      txt: 'format-txt',
+      html: 'format-html',
+      rtf: 'format-rtf',
+      cbz: 'format-cbz',
+      cbr: 'format-cbr'
+    };
+    entries.forEach(function (b) {
       const progress = window.LLLBook.Storage.getProgress(b.id);
       const pct = progress && progress.percent ? progress.percent : 0;
-      const tone = tones[i % tones.length];
+      const tone = FORMAT_TONE[b.format] || DEFAULT_TONE;
       const title = escapeHtml(b.title);
       const card = document.createElement('div');
-      card.className = 'book-card';
+      card.className = 'book-card ' + (FORMAT_SPINE_CLASS[b.format] || 'format-unknown');
       const fmtLabel = window.LLLBook.I18n.t('format.' + (b.format || 'unknown'));
       card.innerHTML =
         '<div class="book-cover ' + tone + '">' +
@@ -411,6 +434,8 @@
     if (!window.LLLBook.Covers) return;
     window.LLLBook.Covers.load(id)
       .then(function (blob) {
+        // TEMP diagnostic logs — remove after cover issue triage.
+        console.log('[EPUB cover] applyCoverToCard id=', id, 'blob=', blob ? (blob.size + 'B ' + blob.type) : blob);
         if (!blob) return;
         const cover = card.querySelector('.book-cover');
         if (!cover || !cover.isConnected) return;
@@ -432,6 +457,7 @@
         // decoded: a broken blob must leave the gradient + title placeholder
         // untouched instead of overlaying a broken-image icon.
         img.onload = function () {
+          console.log('[EPUB cover] card img loaded OK');
           if (!cover.isConnected) {
             URL.revokeObjectURL(url);
             return;
@@ -440,6 +466,7 @@
           cover.classList.add('has-cover');
         };
         img.onerror = function () {
+          console.log('[EPUB cover] card img ERROR');
           URL.revokeObjectURL(url);
         };
         img.src = url;
@@ -671,14 +698,14 @@
     const sliderGroup = document.getElementById('zoom-slider-group');
     const format = currentSession ? currentSession.format : '';
 
-    // Presets are PDF-only; the slider works for PDF and CBZ. Both only show
+    // Presets are PDF-only; the slider works for PDF, CBZ and CBR. Both only show
     // after a successful open (currentSession set), never on a failed one.
     const hasPresets = !!(currentSession && typeof currentSession.setZoomMode === 'function');
     if (presetGroup) {
       presetGroup.style.display = (format === 'pdf' && hasPresets) ? 'flex' : 'none';
     }
 
-    if (format === 'pdf' || format === 'cbz') {
+    if (format === 'pdf' || format === 'cbz' || format === 'cbr') {
       const level = currentSession.zoomLevel || 1.0;
       const percentValue = Math.round(level * 100);
       if (slider) slider.value = percentValue;
@@ -1307,6 +1334,12 @@
         else if (msg === 'jszip-missing') reason = window.LLLBook.I18n.t('reader.cbz_lib_missing');
         else if (msg === 'no-images') reason = window.LLLBook.I18n.t('reader.cbz_no_images');
         else if (msg === 'zip-invalid') reason = window.LLLBook.I18n.t('reader.cbz_not_zip');
+        else if (msg === 'unrar-missing') reason = window.LLLBook.I18n.t('reader.cbr_lib_missing');
+        else if (msg === 'rar-invalid') reason = window.LLLBook.I18n.t('reader.cbr_not_rar');
+        else if (msg === 'rar-volume-unsupported') reason = window.LLLBook.I18n.t('reader.cbr_volume_unsupported');
+        else if (msg === 'rar-password') reason = window.LLLBook.I18n.t('reader.cbr_password');
+        else if (msg === 'rar-cancelled') reason = window.LLLBook.I18n.t('reader.cbr_cancelled');
+        else if (msg === 'rar-too-large') reason = window.LLLBook.I18n.t('reader.cbr_too_large');
         else reason = window.LLLBook.I18n.t('reader.corrupt');
         container.innerHTML =
           '<div class="notice">' +
@@ -1340,6 +1373,23 @@
     renderLibrary();
   }
 
+  // Rebuild a file name with an extension that detectFormat recognizes. The
+  // stored title is often the book's metadata title (e.g. "My Great Book", no
+  // extension), which breaks reopening because detectFormat keys on extension.
+  // Restore the extension from the stored format key unless the title already
+  // ends with a known one (never double-append).
+  function buildStoredFileName(book) {
+    const base = book.title || 'book';
+    const fmt = book.format;
+    if (!fmt || fmt === 'unknown') return base;
+    // Only trust an existing extension when it matches the stored format; a
+    // metadata title like "Vol.2" or "report.pdf" (for an epub) must not be
+    // mistaken for a real extension, or detectFormat misroutes/fails.
+    const extMatch = /\.([A-Za-z0-9]+)$/.exec(base);
+    if (extMatch && extMatch[1].toLowerCase() === fmt) return base;
+    return base + '.' + fmt;
+  }
+
   // Reopen a previously stored book from the Library, no re-upload needed.
   function reopenStoredBook(book) {
     if (!window.LLLBook.StoredBooks) {
@@ -1349,7 +1399,7 @@
     window.LLLBook.StoredBooks.load(book.id)
       .then(function (blob) {
         if (!blob) throw new Error('missing');
-        const file = new File([blob], book.title || 'book');
+        const file = new File([blob], buildStoredFileName(book));
         window.LLLBook.Storage.saveBook(book); // refresh "last opened"
         renderFromFile(file, book.id);
       })
@@ -1366,7 +1416,7 @@
     showToast(window.LLLBook.I18n.t('reader.too_big_repick'));
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.pdf,.epub,.fb2,.cbz,.txt,.html,.htm,.rtf';
+    input.accept = '.pdf,.epub,.fb2,.cbz,.cbr,.txt,.html,.htm,.rtf';
     input.addEventListener('change', function () {
       const file = input.files && input.files[0];
       if (!file) return;
@@ -1516,7 +1566,7 @@
 
   function updateButtonLabels() {
     const format = currentSession ? currentSession.format : '';
-    const isZoom = (format === 'pdf' || format === 'cbz');
+    const isZoom = (format === 'pdf' || format === 'cbz' || format === 'cbr');
 
     const minusBtn = $('#font-minus');
     const plusBtn = $('#font-plus');
