@@ -29,6 +29,7 @@ Built with **pure HTML, CSS, and JavaScript** — no build tools, no package man
 | EPUB       | `.epub`         | [epub.js](https://github.com/futurepress/epub.js)
 | FB2        | `.fb2`          | [epub.js](https://github.com/futurepress/epub.js)
 | CBZ comic  | `.cbz`          | [JSZip](https://stuk.github.io/jszip/)
+| CBR comic  | `.cbr`          | [node-unrar-js](https://github.com/YuJianrong/node-unrar.js) (vendored wasm)
 
 ### Out of scope: MOBI / AZW / AZW3
 
@@ -55,7 +56,7 @@ Press **Ctrl+C** in the terminal to stop the server.
 
 Alternatively, use the VS Code **Live Server** extension and click **Go Live** — it does the same thing without typing any commands.
 
-> **Note:** The app is written in plain HTML/CSS/JS and *will* also open if you simply double-click `index.html`. However, this bypasses the local server, so **CBR (RAR) files won't load** and other `file://` restrictions may apply. For the full experience, use the server.
+> **Note:** The app is written in plain HTML/CSS/JS and *will* also open if you simply double-click `index.html`. However, this bypasses the local server, so other `file://` restrictions may apply. For the full experience, use the server.
 
 
 ## Project structure
@@ -73,16 +74,27 @@ lll-e-book/
     ├── i18n.js             UI translation engine + language dictionaries
     ├── stored-books.js     IndexedDB storage so books reopen without re-upload
     ├── file-loader.js      Format detection + dispatch
+    ├── unrar-library.js    Lazy loader for the vendored RAR decoder (CBR)
     └── renderers/
         ├── text.js         TXT / HTML / RTF
         ├── pdf.js          PDF via pdf.js
         ├── epub.js         EPUB + FB2 via epub.js
-        └── comic.js        CBZ via JSZip
+        └── comic.js        CBZ via JSZip, CBR via the vendored RAR decoder
 ```
 
-## Libraries (loaded via CDN)
+## Libraries
+
+CDN (pinned with Subresource Integrity in `index.html`):
 
 - [pdf.js](https://mozilla.github.io/pdf.js/) — PDF rendering
 - [epub.js](https://github.com/futurepress/epub.js) — EPUB / FB2
 - [JSZip](https://stuk.github.io/jszip/) — CBZ comic archives
-- [unrar-wasm](https://www.npmjs.com/package/unrar-wasm) — CBR (needs a local server)
+
+Vendored under `vendor/` (see `vendor/UPSTREAM.json` for versions, tarball
+integrity and per-file SHA-256):
+
+- [node-unrar-js](https://github.com/YuJianrong/node-unrar.js) 2.0.2 (MIT) — CBR
+  (RAR) archives. Wraps the official unrar C++ library `unrarsrc-6.1.7`, whose
+  freeware license ships alongside it as `vendor/unrar/LICENSE_UNRAR.txt`.
+  Single-file RAR4/RAR5 archives only; multi-part (split) RAR volumes are not
+  supported by that library.

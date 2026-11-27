@@ -105,17 +105,194 @@
   // open from an ArrayBuffer) archive.createUrl(url, {base64:true}) returns
   // a "data:..." URL directly from the zip entry. Best-effort: any missing
   // piece or failure resolves with null.
+  // Fallback cover pick for EPUBs without a declared cover. Packaging
+  // (epub.js 0.3.93 src/packaging.js) gives:
+  //   packaging.manifest — plain object, id → { href, type, overlay,
+  //     properties[] } (note: the media-type attribute is stored as `type`)
+  //   packaging.spine    — array of { idref, linear, properties, index }
+  // Priority: (a) first image following spine reading order (linear="no"
+  // refs skipped), (b) first image in manifest walk order. Only items whose
+  // type starts with "image/" are considered; SVG is excluded because it
+  // tends to fail/taint the canvas in shrinkToDataURL (harmless but useless).
+  // Among candidates, a basename that starts with "cover" (cover.jpg,
+  // COVER_1.png) wins as closest to a real title page; a plain substring
+  // match would also catch unrelated names like discover.png. Returns ''
+  // when nothing qualifies.
+  function pickFallbackImageHref(packaging) {
+    if (!packaging || !packaging.manifest) return '';
+    var manifest = packaging.manifest;
+    function imageItem(id) {
+      var item = manifest[id];
+      if (!item || !item.href) return null;
+      var type = String(item.type || '').toLowerCase();
+      if (type.indexOf('image/') !== 0) return null;
+      if (type === 'image/svg+xml') return null;
+      return item;
+    }
+    var first = null;
+    var preferred = null;
+    function consider(id) {
+      var item = imageItem(id);
+      if (!item) return;
+      if (!first) first = item;
+      if (!preferred) {
+        var basename = String(item.href).split('/').pop().toLowerCase();
+        if (basename.indexOf('cover') === 0) preferred = item;
+      }
+    }
+    var spine = packaging.spine;
+    if (Array.isArray(spine) && spine.length) {
+      spine.forEach(function (ref) {
+        if (preferred) return;
+        if (ref && ref.linear !== 'no') consider(ref.idref);
+      });
+    }
+    // Manifest walk only when the spine carried no image at all (spec: b).
+    if (!first) {
+      Object.keys(manifest).forEach(function (id) {
+        consider(id);
+      });
+    }
+    var picked = preferred || first;
+    return picked ? picked.href : '';
+  }
+
+  // Some EPUB producers do not put a cover in package metadata (or list their
+  // images with unhelpful names such as "001.jpg"). In that case the only
+  // reliable hint is often the first image actually used by the opening spine
+  // documents. Keep this bounded: it is a last-resort thumbnail heuristic, not
+  // a full book scan, and must never delay opening the reader indefinitely.
+  function isRasterImagePath(path) {
+    return /\.(?:avif|gif|jpe?g|png|webp)(?:[?#].*)?$/i.test(String(path || ''));
+  }
+
+  function resolveSectionAssetPath(section, src) {
+    if (!section || !src || /^(?:data:|blob:|https?:|file:)/i.test(src)) return '';
+    try {
+      // `section.url` is the already-resolved archive path (normally
+      // /OEBPS/text/chapter.xhtml). Give URL a throwaway origin so it can
+      // normalize ../ segments without turning the asset into a network URL.
+      var base = String(section.url || section.href || '');
+      if (base.charAt(0) !== '/') base = '/' + base;
+      return new URL(String(src), 'https://epub.local' + base).pathname;
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function findChapterImagePath(book) {
+    var spine = book && book.spine;
+    var sections = spine && (spine.spineItems || spine.items);
+    if (!sections || !sections.length) return Promise.resolve('');
+    var index = 0;
+    var limit = Math.min(sections.length, 3);
+    function next() {
+      if (index >= limit) return Promise.resolve('');
+      var section = sections[index++];
+      if (!section || section.linear === false || typeof section.load !== 'function') return next();
+      return Promise.resolve(section.load())
+        .then(function (contents) {
+          var doc = section.document || contents;
+          if (!doc || typeof doc.querySelectorAll !== 'function') return '';
+          var images = doc.querySelectorAll('img[src]');
+          for (var i = 0; i < images.length; i++) {
+            var path = resolveSectionAssetPath(section, images[i].getAttribute('src'));
+            if (isRasterImagePath(path)) return path;
+          }
+          return '';
+        })
+        .catch(function () { return ''; })
+        .then(function (path) { return path || next(); });
+    }
+    return next();
+  }
+
+  function archiveUrlForPath(book, path) {
+    if (!path || !book || !book.archived || !book.archive) return Promise.resolve(null);
+    return book.archive.createUrl(path, { base64: true }).catch(function () {
+      return null;
+    });
+  }
+
+  // epub.js 0.3.93 has no book.loaded.packaging (that name only exists in the
+  // 0.4 line). In 0.3.93 unpack() does loading.cover.resolve(this.cover), so
+  // book.loaded.cover resolves with undefined when no cover is declared — but
+  // we keep the .catch below so the fallback also runs if a future/patched
+  // build rejects here instead. Declared-cover books behave as before.
   function resolveCover(book) {
+    // TEMP diagnostic logs (prefix "[EPUB cover]") — remove after cover issue triage.
+    console.log('[EPUB cover] start', { archived: book.archived, hasArchive: !!(book.archived && book.archive) });
     return book.loaded.cover
       .then(function (coverPath) {
+        console.log('[EPUB cover] declared coverPath =', coverPath);
         if (!coverPath || !book.archived || !book.archive) return null;
-        return book.archive.createUrl(coverPath, { base64: true });
+        return book.archive.createUrl(coverPath, { base64: true })
+          .then(function (u) {
+            console.log('[EPUB cover] declared createUrl ->', u ? String(u).slice(0, 20) : u);
+            return u;
+          }, function (err) {
+            console.log('[EPUB cover] declared createUrl ERROR', err);
+            throw err;
+          });
+      })
+      .catch(function (err) {
+        console.log('[EPUB cover] declared cover rejected/empty -> fallback', err);
+        return null;
       })
       .then(function (dataUrl) {
-        if (!dataUrl || typeof dataUrl !== 'string' || dataUrl.indexOf('data:') !== 0) return null;
+        if (dataUrl) return dataUrl;
+        // No declared cover (or its fetch failed): try the first image in the
+        // package instead. unpack() sets book.packaging before resolving
+        // book.loaded.cover, so the Packaging object is already available.
+        var pkg = book.loaded.packaging
+          ? book.loaded.packaging
+          : Promise.resolve(book.packaging);
+        return pkg.then(function (packaging) {
+          console.log('[EPUB cover] fallback packaging =', !!packaging, 'manifest =', !!(packaging && packaging.manifest));
+          var href = pickFallbackImageHref(packaging);
+          console.log('[EPUB cover] fallback href =', href);
+          if (!href || !book.archived || !book.archive) return null;
+          // manifest href is OPF-relative (e.g. "images/cover.jpg") but the zip
+          // key is the full path (e.g. "/OEBPS/images/cover.jpg"). Declared
+          // covers work because book.js stores this.cover = this.resolve(...)
+          // (src/book.js L486-493), so resolve the same way here.
+          var resolved = (typeof book.resolve === 'function') ? book.resolve(href) : href;
+          console.log('[EPUB cover] resolved =', resolved);
+          return archiveUrlForPath(book, resolved)
+            .then(function (u) {
+              console.log('[EPUB cover] fallback createUrl ->', u ? String(u).slice(0, 20) : u);
+              return u;
+            }, function (err) {
+              console.log('[EPUB cover] fallback createUrl ERROR', err);
+              throw err;
+            });
+        });
+      })
+      .then(function (dataUrl) {
+        if (dataUrl) return dataUrl;
+        // Final fallback: pull the first usable image from the opening pages.
+        return findChapterImagePath(book).then(function (path) {
+          console.log('[EPUB cover] chapter-image fallback path =', path);
+          return archiveUrlForPath(book, path);
+        });
+      })
+      .then(function (dataUrl) {
+        // Archive.createUrl caches by archive path, not by its `base64` option.
+        // If epub.js already prepared the same asset for the rendition, this
+        // can therefore be a blob URL even though we requested base64. The
+        // thumbnail decoder supports both, so do not discard that valid cover.
+        if (!dataUrl || typeof dataUrl !== 'string' ||
+            (dataUrl.indexOf('data:') !== 0 && dataUrl.indexOf('blob:') !== 0)) return null;
         return shrinkToDataURL(dataUrl);
       })
-      .catch(function () { return null; });
+      .then(function (dataUrl) {
+        console.log('[EPUB cover] final dataUrl prefix =', dataUrl ? String(dataUrl).slice(0, 20) : dataUrl);
+        return dataUrl;
+      })
+      .catch(function (err) {
+        console.log('[EPUB cover] FINAL null (error absorbed)', err);
+        return null;
+      });
   }
 
   // Cover resolution gets a hard budget: whatever happens (pending promise,
@@ -848,6 +1025,8 @@
                 },
               };
                     sessionRef = session;
+                    // TEMP diagnostic log — remove after cover issue triage.
+                    console.log('[EPUB cover] buildSession cover =', cover ? String(cover).slice(0, 20) : cover);
                     if (cover) session.cover = cover;
                     return session;
                   }
